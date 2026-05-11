@@ -23,6 +23,7 @@ import {
     KanbanSquare,
     Lock,
 } from 'lucide-react';
+import GenbaAssistant from '../components/GenbaAssistant';
 
 const navSections = [
     {
@@ -245,6 +246,7 @@ export default function DashboardLayout() {
                 <main className="page-content animate-fade-in" style={{ padding: '2.5rem' }}>
                     <Outlet />
                 </main>
+                <GenbaAssistant />
             </div>
         </div>
     );
