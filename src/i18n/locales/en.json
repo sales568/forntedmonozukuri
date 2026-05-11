@@ -1,0 +1,140 @@
+{
+    "common": {
+        "appName": "MVP MONOZUKURI",
+        "loading": "Loading...",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "create": "Create",
+        "search": "Search...",
+        "actions": "Actions",
+        "status": "Status",
+        "noResults": "No results found",
+        "confirm": "Confirm",
+        "back": "Back",
+        "next": "Next",
+        "previous": "Previous",
+        "yes": "Yes",
+        "no": "No",
+        "all": "All",
+        "filter": "Filter",
+        "export": "Export",
+        "import": "Import"
+    },
+    "auth": {
+        "login": "Sign In",
+        "logout": "Sign Out",
+        "email": "Email",
+        "password": "Password",
+        "forgotPassword": "Forgot your password?",
+        "welcome": "Welcome back",
+        "subtitle": "Production Management System"
+    },
+    "nav": {
+        "dashboard": "Dashboard",
+        "fos": "Standardization (FOS)",
+        "production": "Production",
+        "quality": "Quality",
+        "maintenance": "Maintenance",
+        "inventory": "Inventory",
+        "competencies": "Competencies",
+        "safety": "Safety & 5S",
+        "kaizen": "Continuous Improvement",
+        "formats": "Templates",
+        "costs": "Costs",
+        "admin": "Administration",
+        "users": "Users",
+        "operations": "Operations",
+        "support": "Support",
+        "analytics": "Analytics"
+    },
+    "dashboard": {
+        "title": "Control Dashboard",
+        "subtitle": "Real-time operational overview",
+        "oee": "OEE",
+        "productivity": "Productivity",
+        "qualityRate": "Quality Rate",
+        "mtbf": "MTBF",
+        "mttr": "MTTR",
+        "activeOrders": "Active Orders",
+        "openIssues": "Open Issues",
+        "suggestions": "Pending Suggestions"
+    },
+    "fos": {
+        "title": "Standard Operating Sheets",
+        "subtitle": "Manage standardized work instructions",
+        "newFos": "New FOS",
+        "version": "Version",
+        "type": "Type",
+        "status": "Status",
+        "draft": "Draft",
+        "review": "In Review",
+        "approved": "Approved",
+        "obsolete": "Obsolete"
+    },
+    "production": {
+        "title": "Planning & Production",
+        "subtitle": "Production orders and real-time tracking",
+        "newOrder": "New Order",
+        "orderNumber": "Order #",
+        "product": "Product",
+        "quantity": "Quantity",
+        "planned": "Planned",
+        "inProgress": "In Progress",
+        "completed": "Completed",
+        "delayed": "Delayed"
+    },
+    "quality": {
+        "title": "Quality Management",
+        "subtitle": "Inspections, control and nonconformities",
+        "newInspection": "New Inspection",
+        "checkpoints": "Checkpoints",
+        "nonconformities": "Nonconformities",
+        "scrap": "Scrap",
+        "rework": "Rework"
+    },
+    "maintenance": {
+        "title": "Maintenance (TPM)",
+        "subtitle": "Breakdown, preventive and autonomous management",
+        "newBreakdown": "Log Breakdown",
+        "workOrders": "Work Orders",
+        "routines": "Maintenance Routines",
+        "tags": "Anomaly Tags"
+    },
+    "inventory": {
+        "title": "Inventory & Traceability",
+        "subtitle": "Stock control, lots and traceability",
+        "movements": "Movements",
+        "lots": "Lots",
+        "traceability": "Traceability"
+    },
+    "competencies": {
+        "title": "Competencies & Talent",
+        "subtitle": "ILU matrix, training and versatility",
+        "skillMatrix": "Skill Matrix",
+        "trainingPlan": "Training Plan",
+        "certifications": "Certifications"
+    },
+    "safety": {
+        "title": "Safety & 5S",
+        "subtitle": "Audits, incidents and PPE",
+        "audits5s": "5S Audits",
+        "incidents": "Incidents",
+        "epis": "PPE"
+    },
+    "kaizen": {
+        "title": "Continuous Improvement",
+        "subtitle": "Suggestions, improvement projects and lessons learned",
+        "suggestions": "Suggestion Box",
+        "projects": "Improvement Projects",
+        "lessons": "Lessons Learned"
+    },
+    "costs": {
+        "title": "Costs & Budgets",
+        "subtitle": "Cost tracking, variances and losses",
+        "byOrder": "By Order",
+        "variance": "Variances",
+        "losses": "Losses"
+    }
+}

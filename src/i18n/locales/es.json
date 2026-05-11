@@ -1,0 +1,142 @@
+{
+    "common": {
+        "appName": "MVP MONOZUKURI",
+        "loading": "Cargando...",
+        "save": "Guardar",
+        "cancel": "Cancelar",
+        "delete": "Eliminar",
+        "edit": "Editar",
+        "create": "Crear",
+        "search": "Buscar...",
+        "actions": "Acciones",
+        "status": "Estado",
+        "noResults": "No se encontraron resultados",
+        "confirm": "Confirmar",
+        "back": "Volver",
+        "next": "Siguiente",
+        "previous": "Anterior",
+        "yes": "Sí",
+        "no": "No",
+        "all": "Todos",
+        "filter": "Filtrar",
+        "export": "Exportar",
+        "import": "Importar"
+    },
+    "auth": {
+        "login": "Iniciar Sesión",
+        "logout": "Cerrar Sesión",
+        "email": "Correo electrónico",
+        "password": "Contraseña",
+        "forgotPassword": "¿Olvidaste tu contraseña?",
+        "welcome": "Bienvenido de nuevo",
+        "subtitle": "Sistema de Gestión de Producción"
+    },
+    "nav": {
+        "dashboard": "Tablero",
+        "fos": "Estandarización (FOS)",
+        "production": "Producción",
+        "quality": "Calidad",
+        "maintenance": "Mantenimiento",
+        "inventory": "Inventario",
+        "competencies": "Competencias",
+        "safety": "Seguridad y 5S",
+        "kaizen": "Mejora Continua",
+        "formats": "Formatos",
+        "costs": "Costos",
+        "admin": "Administración",
+        "users": "Usuarios",
+        "plants": "Empresas/Plantas",
+        "plantConfig": "Configuración de Planta",
+        "operations": "Operaciones",
+        "support": "Soporte",
+        "analytics": "Analíticas"
+    },
+    "dashboard": {
+        "title": "Tablero de Control",
+        "subtitle": "Resumen operativo en tiempo real",
+        "oee": "OEE",
+        "productivity": "Productividad",
+        "qualityRate": "Tasa de Calidad",
+        "mtbf": "MTBF",
+        "mttr": "MTTR",
+        "activeOrders": "Órdenes Activas",
+        "openIssues": "Incidencias Abiertas",
+        "suggestions": "Sugerencias Pendientes"
+    },
+    "fos": {
+        "title": "Fichas de Operación Estándar",
+        "subtitle": "Gestión de instrucciones de trabajo estandarizadas",
+        "newFos": "Nueva FOS",
+        "version": "Versión",
+        "type": "Tipo",
+        "status": "Estado",
+        "draft": "Borrador",
+        "review": "En Revisión",
+        "approved": "Aprobada",
+        "obsolete": "Obsoleta"
+    },
+    "production": {
+        "title": "Planificación y Producción",
+        "subtitle": "Órdenes de producción y seguimiento en tiempo real",
+        "newOrder": "Nueva Orden",
+        "orderNumber": "Nº de Orden",
+        "product": "Producto",
+        "quantity": "Cantidad",
+        "planned": "Planificada",
+        "inProgress": "En Curso",
+        "completed": "Completada",
+        "delayed": "Retrasada"
+    },
+    "quality": {
+        "title": "Gestión de Calidad",
+        "subtitle": "Inspecciones, control y no conformidades",
+        "newInspection": "Nueva Inspección",
+        "checkpoints": "Puntos de Control",
+        "nonconformities": "No Conformidades",
+        "scrap": "Scrap",
+        "rework": "Retrabajo"
+    },
+    "maintenance": {
+        "title": "Mantenimiento (TPM)",
+        "subtitle": "Gestión de averías, preventivo y autónomo",
+        "newBreakdown": "Registrar Avería",
+        "workOrders": "Órdenes de Trabajo",
+        "routines": "Gamas de Mantenimiento",
+        "tags": "Etiquetas de Anomalía"
+    },
+    "inventory": {
+        "title": "Inventarios y Trazabilidad",
+        "subtitle": "Control de stock, lotes y trazabilidad",
+        "movements": "Movimientos",
+        "lots": "Lotes",
+        "traceability": "Trazabilidad"
+    },
+    "competencies": {
+        "title": "Competencias y Talento",
+        "subtitle": "Matriz ILU, formaciones y polivalencia",
+        "skillMatrix": "Matriz de Habilidades",
+        "trainingPlan": "Plan de Formación",
+        "certifications": "Certificaciones"
+    },
+    "safety": {
+        "title": "Seguridad y 5S",
+        "subtitle": "Auditorías, incidentes y EPIs",
+        "audits5s": "Auditorías 5S",
+        "incidents": "Incidentes",
+        "epis": "EPIs"
+    },
+    "kaizen": {
+        "title": "Mejora Continua",
+        "subtitle": "Sugerencias, proyectos de mejora y lecciones aprendidas",
+        "suggestions": "Buzón de Sugerencias",
+        "projects": "Proyectos de Mejora",
+        "lessons": "Lecciones Aprendidas"
+    },
+    "costs": {
+        "title": "Costos y Presupuestos",
+        "subtitle": "Seguimiento de costos, desviaciones y pérdidas",
+        "byOrder": "Por Orden",
+        "variance": "Desviaciones",
+        "losses": "Pérdidas"
+    }
+}
