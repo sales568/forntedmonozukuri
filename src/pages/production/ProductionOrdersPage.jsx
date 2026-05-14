@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { PageHeader, Card, Button, Badge, Modal } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
-import { Info, HelpCircle, AlertCircle, Play, Pause, Square, Plus } from 'lucide-react';
+import { Info, HelpCircle, AlertCircle, Play, Pause, Square, Plus, Activity } from 'lucide-react';
 
 export default function ProductionOrdersPage() {
     const { user } = useAuth();
@@ -199,6 +199,38 @@ export default function ProductionOrdersPage() {
             <PageHeader title="Producción" subtitle="Gestión integral OT, operaciones, materiales y competencias">
                 {!isOperator && <Button variant="primary" onClick={() => setIsNewOrderOpen(true)}>Nueva Orden</Button>}
             </PageHeader>
+
+            {/* Asistente Gemba AI Potenciado - Producción */}
+            <Card className="bg-slate-900 border-slate-800 shadow-2xl relative overflow-hidden group mb-8">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Activity size={80} className="text-blue-500" />
+                </div>
+                <div className="flex flex-col md:flex-row gap-6 items-start relative z-10">
+                    <div className="p-4 bg-blue-500/20 rounded-2xl border border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
+                        <Activity size={32} className="text-blue-400" />
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Badge variant="info" className="bg-blue-500/10 text-blue-400 border-blue-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest">Ingeniería Gemba AI</Badge>
+                            <span className="text-slate-500 text-[10px] font-bold uppercase tracking-tighter">Control de Flujo de Valor</span>
+                        </div>
+                        <h2 className="text-xl font-black text-white leading-tight uppercase tracking-tighter">Asistente de Gestión de Producción</h2>
+                        <p className="text-slate-400 text-sm leading-relaxed max-w-4xl italic">
+                            "Bienvenido al motor de ejecución de la planta. Aquí gestionamos la transformación de recursos en productos terminados. Las <strong>Órdenes de Trabajo (OT)</strong> son el documento maestro: sin ellas, perdemos la trazabilidad de materiales y el control de costos reales. Cada registro de avance que realizas alimenta el cálculo del cumplimiento del plan y asegura que el <strong>Lead Time</strong> prometido al cliente sea una realidad. ¡Mantén tus OT actualizadas para eliminar los cuellos de botella!"
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+                            <div className="flex gap-3">
+                                <div className="h-2 w-2 rounded-full bg-blue-500 mt-1.5 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+                                <p className="text-[11px] text-slate-300"><strong>Importancia:</strong> Las OT garantizan la sincronización entre ventas, inventario y planta.</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="h-2 w-2 rounded-full bg-green-500 mt-1.5 shadow-[0_0_8px_rgba(34,197,94,0.8)]"></div>
+                                <p className="text-[11px] text-slate-300"><strong>Objetivo:</strong> Maximizar el flujo y reducir el desperdicio de tiempo en cada operación.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Card>
 
             {error && <div className="alert alert-danger" style={{ marginBottom: 'var(--space-4)' }}>{error}</div>}
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PageHeader, Card, Button, Badge, Modal } from '../../components/ui';
 import apiClient from '../../api/client';
 import ModuleFormats from '../../components/ModuleFormats';
+import { Camera, FileText, CheckCircle, AlertTriangle, Eye, Download } from 'lucide-react';
 
 export default function QualityInspectionsPage() {
     const [inspections, setInspections] = useState([]);
@@ -11,7 +12,9 @@ export default function QualityInspectionsPage() {
     const [error, setError] = useState('');
     const [newInspectionOpen, setNewInspectionOpen] = useState(false);
     const [newCheckpointOpen, setNewCheckpointOpen] = useState(false);
-    const [inspectionForm, setInspectionForm] = useState({ checkpointId: '', result: 'OK', value: '', notes: '' });
+    const [reportModalOpen, setReportModalOpen] = useState(false);
+    const [selectedInspection, setSelectedInspection] = useState(null);
+    const [inspectionForm, setInspectionForm] = useState({ checkpointId: '', result: 'OK', value: '', notes: '', imageUrl: '' });
     const [checkpointForm, setCheckpointForm] = useState({ workstationId: '', name: '', specification: '', method: 'visual', frequency: 'hourly' });
 
     const loadData = async () => {
@@ -69,9 +72,10 @@ export default function QualityInspectionsPage() {
                 result: inspectionForm.result,
                 value: inspectionForm.value ? Number(inspectionForm.value) : undefined,
                 notes: inspectionForm.notes || undefined,
+                imageUrl: inspectionForm.imageUrl || undefined,
             });
             setNewInspectionOpen(false);
-            setInspectionForm({ checkpointId: '', result: 'OK', value: '', notes: '' });
+            setInspectionForm({ checkpointId: '', result: 'OK', value: '', notes: '', imageUrl: '' });
             await loadData();
         } catch (err) {
             setModalError(err.response?.data?.message || 'Error al guardar la inspección.');
@@ -118,6 +122,11 @@ export default function QualityInspectionsPage() {
                                         <td>{inspection.inspector?.name || '-'}</td>
                                         <td>{resultBadge(inspection.result)}</td>
                                         <td>{inspection.nonconformities?.length || 0}</td>
+                                        <td className="text-right">
+                                            <Button variant="ghost" size="sm" className="text-blue-600 font-bold text-[10px] uppercase p-0" onClick={() => { setSelectedInspection(inspection); setReportModalOpen(true); }}>
+                                                <Eye size={12} className="mr-1" /> Ver Reporte
+                                            </Button>
+                                        </td>
                                     </tr>
                                 ))}
                                 {!inspections.length && (
@@ -173,12 +182,83 @@ export default function QualityInspectionsPage() {
                         {checkpoints.map((cp) => <option key={cp.id} value={cp.id}>{cp.name}</option>)}
                     </select>
                     <select className="form-input" value={inspectionForm.result} onChange={(e) => setInspectionForm((p) => ({ ...p, result: e.target.value }))}>
-                        <option value="OK">OK</option>
-                        <option value="NOK_REWORK">NOK_REWORK</option>
-                        <option value="NOK_SCRAP">NOK_SCRAP</option>
+                        <option value="OK">OK - Cumple Estándar</option>
+                        <option value="NOK_REWORK">NOK - Requiere Reproceso</option>
+                        <option value="NOK_SCRAP">NOK - Scrap / Desecho</option>
                     </select>
-                    <input className="form-input" type="number" placeholder="Valor medido (opcional)" value={inspectionForm.value} onChange={(e) => setInspectionForm((p) => ({ ...p, value: e.target.value }))} />
-                    <textarea className="form-input" placeholder="Notas" value={inspectionForm.notes} onChange={(e) => setInspectionForm((p) => ({ ...p, notes: e.target.value }))} />
+                    <div className="flex gap-2">
+                        <input className="form-input flex-1" type="number" placeholder="Valor medido" value={inspectionForm.value} onChange={(e) => setInspectionForm((p) => ({ ...p, value: e.target.value }))} />
+                        <input className="form-input flex-1" placeholder="URL Foto Evidencia" value={inspectionForm.imageUrl} onChange={(e) => setInspectionForm((p) => ({ ...p, imageUrl: e.target.value }))} />
+                    </div>
+                    <textarea className="form-input" placeholder="Notas técnicas del hallazgo..." value={inspectionForm.notes} onChange={(e) => setInspectionForm((p) => ({ ...p, notes: e.target.value }))} />
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={reportModalOpen}
+                onClose={() => setReportModalOpen(false)}
+                title="Reporte de Inspección de Calidad"
+                maxWidth="900px"
+            >
+                <div className="p-8 space-y-6">
+                    <div className="flex justify-between items-start border-b border-gray-100 pb-6">
+                        <div className="space-y-1">
+                            <Badge variant={selectedInspection?.result === 'OK' ? 'success' : 'danger'} className="text-xs px-3 py-1 font-black uppercase tracking-widest">
+                                {selectedInspection?.result}
+                            </Badge>
+                            <h2 className="text-2xl font-black text-blue-900 uppercase tracking-tighter">{selectedInspection?.checkpoint?.name}</h2>
+                            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">ID Inspección: {selectedInspection?.id.split('-')[0]}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha de Registro</p>
+                            <p className="text-sm font-bold text-slate-800">{new Date(selectedInspection?.inspectedAt).toLocaleString()}</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-6">
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                    <FileText size={12} /> Diagnóstico Técnico
+                                </h4>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center border-b border-white pb-2">
+                                        <span className="text-xs text-slate-500 font-bold uppercase">Inspector</span>
+                                        <span className="text-xs font-bold text-slate-900">{selectedInspection?.inspector?.name}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center border-b border-white pb-2">
+                                        <span className="text-xs text-slate-500 font-bold uppercase">Valor Medido</span>
+                                        <span className="text-xs font-bold text-slate-900">{selectedInspection?.value || 'N/A'}</span>
+                                    </div>
+                                    <div className="pt-2">
+                                        <span className="text-[10px] text-slate-400 font-black uppercase block mb-1">Notas de Hallazgo</span>
+                                        <p className="text-xs leading-relaxed text-slate-700 italic">"{selectedInspection?.notes || 'Sin observaciones adicionales.'}"</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Button variant="primary" className="w-full bg-blue-900 font-black tracking-widest py-4 shadow-lg shadow-blue-900/20" onClick={() => window.print()}>
+                                <Download size={18} className="mr-2" /> DESCARGAR REPORTE N1
+                            </Button>
+                        </div>
+
+                        <div className="space-y-3">
+                            <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest flex items-center gap-2">
+                                <Camera size={12} /> Evidencia Fotográfica
+                            </h4>
+                            {selectedInspection?.imageUrl ? (
+                                <div className="rounded-2xl overflow-hidden border-4 border-white shadow-xl aspect-video relative group">
+                                    <img src={selectedInspection.imageUrl} alt="Evidencia" className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-blue-900/20 group-hover:bg-transparent transition-all pointer-events-none" />
+                                </div>
+                            ) : (
+                                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 aspect-video flex flex-col items-center justify-center text-slate-400 gap-2">
+                                    <Camera size={32} className="opacity-20" />
+                                    <span className="text-[10px] font-bold uppercase">No se registró evidencia visual</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </Modal>
         </div>

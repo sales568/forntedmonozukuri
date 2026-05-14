@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PageHeader, Card, Button, Badge, Modal } from '../../components/ui';
 import apiClient from '../../api/client';
-import { UploadCloud, FileText } from 'lucide-react';
+import { UploadCloud, FileText, Activity } from 'lucide-react';
 import MaintenanceDashboard from './MaintenanceDashboard';
 
 export default function MaintenancePage() {
@@ -14,6 +14,10 @@ export default function MaintenancePage() {
     const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
     const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [viewMode, setViewMode] = useState(false);
+    const [resolveModalOpen, setResolveModalOpen] = useState(false);
+    const [selectedBreakdown, setSelectedBreakdown] = useState(null);
+    const [solutionText, setSolutionText] = useState('');
     const [breakdownForm, setBreakdownForm] = useState({ equipmentId: '', description: '', cause: '', downtimeMin: 0 });
     const [equipmentForm, setEquipmentForm] = useState({ workstationId: '', name: '', code: '', type: '', location: '' });
 
@@ -74,13 +78,29 @@ export default function MaintenancePage() {
         }
     };
 
-    const resolveBreakdown = async (id) => {
+    const handleResolveClick = (item) => {
+        setSelectedBreakdown(item);
+        setSolutionText('');
+        setResolveModalOpen(true);
+    };
+
+    const confirmResolve = async () => {
         try {
-            await apiClient.patch(`/maintenance/breakdowns/${id}/resolve`, { cause: 'Cerrada desde la app' });
+            await apiClient.patch(`/maintenance/breakdowns/${selectedBreakdown.id}/resolve`, { 
+                cause: solutionText || 'Reparación estándar' 
+            });
+            setResolveModalOpen(false);
+            setSelectedBreakdown(null);
             await loadData();
         } catch (err) {
             setError(err.response?.data?.message || 'No se pudo cerrar avería');
         }
+    };
+
+    const viewSolution = (item) => {
+        setSelectedBreakdown(item);
+        setViewMode(true);
+        setResolveModalOpen(true);
     };
 
     const statusBadge = (status) => {
@@ -101,6 +121,38 @@ export default function MaintenancePage() {
                     <Button variant="danger" onClick={() => setBreakdownModalOpen(true)} className="bg-red-600 shadow-sm font-bold px-6">REPORTAR AVERÍA</Button>
                 </div>
             </PageHeader>
+
+            {/* Asistente Gemba AI Potenciado - Mantenimiento */}
+            <Card className="bg-slate-900 border-slate-800 shadow-2xl relative overflow-hidden group mb-8">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Activity size={80} className="text-indigo-500" />
+                </div>
+                <div className="flex flex-col md:flex-row gap-6 items-start relative z-10">
+                    <div className="p-4 bg-indigo-500/20 rounded-2xl border border-indigo-500/30 shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+                        <Activity size={32} className="text-indigo-400" />
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Badge variant="info" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest">Ingeniería Gemba AI</Badge>
+                            <span className="text-slate-500 text-[10px] font-bold uppercase tracking-tighter">Monitoreo de Activos Críticos</span>
+                        </div>
+                        <h2 className="text-xl font-black text-white leading-tight uppercase tracking-tighter">Asistente de Confiabilidad de Máquina</h2>
+                        <p className="text-slate-400 text-sm leading-relaxed max-w-4xl italic">
+                            "El mantenimiento preventivo no es un costo, es un seguro de producción. Detecto una alta incidencia de fallas por <strong>Sobrecalentamiento</strong> y <strong>Desgaste natural</strong> en tus registros. <strong>Mi recomendación:</strong> Implementar una rutina de <strong>Termografía Infrarroja</strong> mensual en los motores principales para detectar puntos calientes antes de la avería total. Además, sugiero revisar la frecuencia de lubricación en las prensas hidráulicas, ya que el 80% del desgaste prematuro se debe a la degradación de lubricantes por calor."
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+                            <div className="flex gap-3">
+                                <div className="h-2 w-2 rounded-full bg-indigo-500 mt-1.5 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
+                                <p className="text-[11px] text-slate-300"><strong>Importancia:</strong> El TPM reduce los micro-paros y estabiliza el tiempo de ciclo (OEE).</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="h-2 w-2 rounded-full bg-amber-500 mt-1.5 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></div>
+                                <p className="text-[11px] text-slate-300"><strong>Acción Sugerida:</strong> Chequeo preventivo de sensores inductivos por vibración excesiva.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Card>
 
             {error && <div className="alert alert-danger mb-6">{error}</div>}
 
@@ -139,11 +191,13 @@ export default function MaintenancePage() {
                                         <td className="px-6 py-4 text-center">{statusBadge(item.status)}</td>
                                         <td className="px-6 py-4 text-right">
                                             {item.status !== 'resolved' ? (
-                                                <Button variant="primary" size="sm" onClick={() => resolveBreakdown(item.id)} className="bg-green-600 text-[10px] font-bold tracking-widest transform scale-90 group-hover:scale-100 transition-transform">
+                                                <Button variant="primary" size="sm" onClick={() => handleResolveClick(item)} className="bg-green-600 text-[10px] font-bold tracking-widest transform scale-90 group-hover:scale-100 transition-transform">
                                                     RESOLVER
                                                 </Button>
                                             ) : (
-                                                <span className="text-[10px] font-bold text-gray-300 uppercase italic">Cerrada</span>
+                                                <button onClick={() => viewSolution(item)} className="text-[10px] font-bold text-blue-500 hover:text-blue-400 uppercase flex items-center gap-1 ml-auto">
+                                                    <Activity size={12} /> Ver Solución
+                                                </button>
                                             )}
                                         </td>
                                     </tr>
@@ -224,6 +278,42 @@ export default function MaintenancePage() {
                         <label className="text-xs font-bold text-gray-500 uppercase">Tiempo de Paro (Minutos)</label>
                         <input className="form-input" type="number" min="0" placeholder="0" value={breakdownForm.downtimeMin} onChange={(e) => setBreakdownForm((p) => ({ ...p, downtimeMin: e.target.value }))} />
                     </div>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={resolveModalOpen}
+                onClose={() => { setResolveModalOpen(false); setViewMode(false); }}
+                title={viewMode ? "Detalle de Reparación" : "Resolver Avería / Paro"}
+            >
+                <div className="p-6 space-y-4">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-gray-100">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Evento Reportado</p>
+                        <p className="text-sm font-bold text-gray-800">{selectedBreakdown?.description}</p>
+                        <div className="flex gap-4 mt-2">
+                            <p className="text-[10px] font-bold text-red-600 uppercase">Paro: {selectedBreakdown?.downtimeMin} MIN</p>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase">Equipo: {selectedBreakdown?.equipment?.name}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                        <label className="text-xs font-black uppercase text-blue-900 tracking-tight">
+                            {viewMode ? "Solución Técnica Aplicada" : "¿Cómo se resolvió la avería?"}
+                        </label>
+                        <textarea 
+                            disabled={viewMode}
+                            className="form-input min-h-[120px]"
+                            placeholder="Describa la solución técnica (Ej: Se reemplazó el sensor inductivo y se recalibró el PLC)..."
+                            value={viewMode ? selectedBreakdown?.cause : solutionText}
+                            onChange={(e) => setSolutionText(e.target.value)}
+                        ></textarea>
+                    </div>
+
+                    {!viewMode && (
+                        <Button variant="primary" className="w-full py-4 bg-green-600 font-black tracking-widest" onClick={confirmResolve}>
+                            CONFIRMAR CIERRE TÉCNICO
+                        </Button>
+                    )}
                 </div>
             </Modal>
 
