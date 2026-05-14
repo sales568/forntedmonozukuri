@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Activity, X, HelpCircle, Lightbulb, ShieldAlert, Zap } from 'lucide-react';
+import { Activity, X, HelpCircle, Lightbulb, ShieldAlert, Zap, Wallet } from 'lucide-react';
 import { Badge } from './ui';
 
 const CONTEXT_MAP = {
@@ -48,6 +48,38 @@ const CONTEXT_MAP = {
             'Adjunta fotos de los defectos para el análisis de causa raíz.'
         ],
         icon: ShieldAlert
+    },
+    '/kaizen': {
+        title: 'Mejora Continua (Kaizen)',
+        message: 'Pequeños cambios, grandes impactos. Aquí es donde transformamos los problemas en oportunidades de ahorro.',
+        tips: [
+            'Observa los cuellos de botella; ahí suele haber una idea Kaizen.',
+            'Usa el botón de IA para ver qué mejoras sugiere el sistema según tus datos.'
+        ],
+        icon: Lightbulb
+    },
+    '/phva': {
+        title: 'Tablero PHVA (PDCA)',
+        message: 'Este es el motor de tu planta. El ciclo Planear-Hacer-Verificar-Actuar asegura que ninguna mejora se quede a medias.',
+        tips: [
+            'Planear: Define objetivos claros antes de actuar.',
+            'Hacer: Ejecuta las tareas y registra las evidencias.',
+            'Verificar: Compara los resultados con lo planeado. ¿Funcionó?',
+            'Actuar: Si funcionó, estandariza. Si no, ajusta el plan.',
+            'Ojo: Si tienes mucho en "Hacer" y nada en "Verificar", tienes un cuello de botella en el seguimiento.'
+        ],
+        icon: Activity
+    },
+    '/costs': {
+        title: 'Analítica de Costos Industriales',
+        message: 'Aquí es donde la eficiencia se convierte en rentabilidad. Este módulo rastrea cada centavo invertido en tus órdenes de producción.',
+        tips: [
+            'Organización: Arriba verás el resumen global; a la izquierda, los rubros dominantes; y a la derecha, qué órdenes son las más costosas.',
+            'Estrategia: Los rubros como "Scrap" y "Retrabajos" son costos de no-calidad. Si suben, tu eficiencia real baja.',
+            'Toma de decisiones: Usa el historial inferior para auditar registros inusuales y ajustar tus precios o procesos.',
+            'Rubros Estratégicos: No olvides registrar los costos de "Mejora" y "Formación"; son inversiones para reducir costos futuros.'
+        ],
+        icon: Wallet
     }
 };
 

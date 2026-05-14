@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, Button, Badge, Modal } from './ui';
 import apiClient from '../api/client';
-import { FileSpreadsheet, Edit3, Download, Save, X, History, Eye, BadgeCheck, ImageUp, FileImage } from 'lucide-react';
+import { FileSpreadsheet, Edit3, Download, Save, X, History, Eye, BadgeCheck, ImageUp, FileImage, FileText } from 'lucide-react';
 
 function toBase64(file) {
     return new Promise((resolve, reject) => {
@@ -42,7 +42,6 @@ export default function ModuleFormats({ module, context }) {
                 .filter(f => !(module === 'fos' && f.id === 'fos-continuacion'));
             setForms(filtered);
             if (module === 'fos' && !activeForm && filtered.length) {
-                // Mejora el flujo: muestra algo a la derecha sin que el usuario tenga que adivinar.
                 selectActiveForm(filtered[0]);
             }
         } catch (err) {
@@ -117,6 +116,46 @@ export default function ModuleFormats({ module, context }) {
             link.click();
             link.remove();
         } catch (err) { alert('Error al descargar'); }
+    };
+
+    // Descarga PDF: si hay payload (registro diligenciado), incluye los datos.
+    // Si no, descarga el formato vacío como PDF.
+    const downloadPDF = async (formId, title, dataPayload = {}) => {
+        try {
+            const res = await apiClient.post(
+                `/templates/forms/${formId}/download-filled-pdf`,
+                { payload: dataPayload },
+                { responseType: 'blob' }
+            );
+            const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+            const link = document.createElement('a');
+            link.href = url;
+            const filename = title ? `${title}-${Date.now()}.pdf` : `FORMATO-${formId}.pdf`;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) { alert('Error al descargar PDF'); }
+    };
+
+    // Descarga registro diligenciado en Excel (con datos)
+    const downloadFilledExcel = async (formId, title, dataPayload = {}) => {
+        try {
+            const res = await apiClient.post(
+                `/templates/forms/${formId}/download-filled`,
+                { payload: dataPayload },
+                { responseType: 'blob' }
+            );
+            const url = window.URL.createObjectURL(new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${title || 'REGISTRO'}-${Date.now()}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) { alert('Error al descargar Excel diligenciado'); }
     };
 
     const openForm = async (form) => {
@@ -207,8 +246,18 @@ export default function ModuleFormats({ module, context }) {
                                             size="sm"
                                             className="flex-1 border border-gray-200 font-bold text-[10px]"
                                             onClick={(e) => { e.stopPropagation(); download(form.id, form.title); }}
+                                            title="Plantilla Excel vacía"
                                         >
                                             <Download size={12} className="mr-1" /> EXCEL
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="flex-1 border border-red-200 text-red-700 font-bold text-[10px]"
+                                            onClick={(e) => { e.stopPropagation(); downloadPDF(form.id, form.title); }}
+                                            title="Formato en PDF"
+                                        >
+                                            <FileText size={12} className="mr-1" /> PDF
                                         </Button>
                                         <Button
                                             variant="primary"
@@ -263,6 +312,9 @@ export default function ModuleFormats({ module, context }) {
                                         <Button variant="ghost" size="sm" className="border border-gray-200 text-[10px] font-bold" onClick={() => download(activeForm.id, activeForm.title)}>
                                             <Download size={12} className="mr-1" /> EXCEL
                                         </Button>
+                                        <Button variant="ghost" size="sm" className="border border-red-200 text-red-700 text-[10px] font-bold" onClick={() => downloadPDF(activeForm.id, activeForm.title)}>
+                                            <FileText size={12} className="mr-1" /> PDF
+                                        </Button>
                                         <Button variant="primary" size="sm" className="bg-blue-900 text-[10px] font-bold" onClick={() => openForm(activeForm)}>
                                             <Edit3 size={12} className="mr-1" /> ABRIR
                                         </Button>
@@ -294,10 +346,28 @@ export default function ModuleFormats({ module, context }) {
                                             </div>
                                             {selectedSubmission?.payload && (
                                                 <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
-                                                    <div className="px-3 py-2 bg-gray-50 text-[11px] font-black text-gray-700">Resumen del registro</div>
+                                                    <div className="px-3 py-2 bg-gray-50 text-[11px] font-black text-gray-700 flex items-center justify-between">
+                                                        <span>Resumen del registro</span>
+                                                        <div className="flex gap-1">
+                                                            <button
+                                                                onClick={() => downloadFilledExcel(activeForm.id, activeForm.title, selectedSubmission.payload)}
+                                                                className="text-[10px] font-black text-blue-700 hover:text-blue-900"
+                                                                title="Descargar registro diligenciado en Excel"
+                                                            >
+                                                                <Download size={11} className="inline mr-1" /> XLSX
+                                                            </button>
+                                                            <button
+                                                                onClick={() => downloadPDF(activeForm.id, activeForm.title, selectedSubmission.payload)}
+                                                                className="text-[10px] font-black text-red-700 hover:text-red-900 ml-2"
+                                                                title="Descargar registro diligenciado en PDF"
+                                                            >
+                                                                <FileText size={11} className="inline mr-1" /> PDF
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                     <div className="p-3 grid grid-cols-1 gap-2" style={{ maxHeight: 200, overflow: 'auto' }}>
                                                         {Object.entries(selectedSubmission.payload)
-                                                            .filter(([k, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+                                                            .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
                                                             .filter(([k]) => !['observaciones', 'observations'].includes(k))
                                                             .slice(0, 12)
                                                             .map(([k, v]) => (
@@ -364,8 +434,11 @@ export default function ModuleFormats({ module, context }) {
                                 <h4 className="font-black text-blue-900 text-sm leading-tight mb-6 h-10 overflow-hidden uppercase">{form.title}</h4>
 
                                 <div className="flex gap-2">
-                                    <Button variant="ghost" size="sm" className="flex-1 border border-gray-200 font-bold text-[10px]" onClick={() => download(form.id, form.title)}>
+                                    <Button variant="ghost" size="sm" className="flex-1 border border-gray-200 font-bold text-[10px]" onClick={() => download(form.id, form.title)} title="Plantilla Excel vacía">
                                         <Download size={12} className="mr-1" /> EXCEL
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="flex-1 border border-red-200 text-red-700 font-bold text-[10px]" onClick={() => downloadPDF(form.id, form.title)} title="Formato en PDF">
+                                        <FileText size={12} className="mr-1" /> PDF
                                     </Button>
                                     <Button variant="primary" size="sm" className="flex-1 font-bold text-[10px] bg-blue-900" onClick={() => openForm(form)}>
                                         <Edit3 size={12} className="mr-1" /> DILIGENCIAR
@@ -537,7 +610,27 @@ export default function ModuleFormats({ module, context }) {
 
                             {selectedSubmission?.payload && (
                                 <div className="mt-4">
-                                    <div className="text-[11px] font-black text-gray-700 mb-2">Detalle del registro</div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-[11px] font-black text-gray-700">Detalle del registro</div>
+                                        <div className="flex gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-[10px] font-bold border border-gray-200"
+                                                onClick={() => downloadFilledExcel(selectedForm.id, selectedForm.title, selectedSubmission.payload)}
+                                            >
+                                                <Download size={11} className="mr-1" /> XLSX
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-[10px] font-bold border border-red-200 text-red-700"
+                                                onClick={() => downloadPDF(selectedForm.id, selectedForm.title, selectedSubmission.payload)}
+                                            >
+                                                <FileText size={11} className="mr-1" /> PDF
+                                            </Button>
+                                        </div>
+                                    </div>
                                     <pre className="text-[10px] bg-gray-50 border border-gray-200 rounded-xl p-3 overflow-auto" style={{ maxHeight: 180 }}>
                                         {JSON.stringify(selectedSubmission.payload, null, 2)}
                                     </pre>
