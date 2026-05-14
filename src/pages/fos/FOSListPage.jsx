@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Button, Badge, Modal } from '../../components/ui';
 import apiClient from '../../api/client';
 import ModuleFormats from '../../components/ModuleFormats';
 import { FileText, Plus, RefreshCw, Monitor, AlertCircle, Edit2, Eye } from 'lucide-react';
 
 export default function FOSListPage() {
-    const navigate = useNavigate();
     const [items, setItems] = useState([]);
     const [workstations, setWorkstations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [selectedFosContextId, setSelectedFosContextId] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedFos, setSelectedFos] = useState(null);
     const [isEditMode, setIsEditMode] = useState(false);
+    const [isViewOpen, setIsViewOpen] = useState(false);
+    const [viewLoading, setViewLoading] = useState(false);
+    const [viewError, setViewError] = useState('');
+    const [viewFos, setViewFos] = useState(null);
+    const [selectedVersionNumber, setSelectedVersionNumber] = useState(null);
     const [form, setForm] = useState({
         code: '',
         nombreProceso: '',
@@ -37,6 +41,8 @@ export default function FOSListPage() {
 
             setItems(fosRes.data?.items || []);
             setWorkstations(wsRes.data || []);
+            const nextItems = fosRes.data?.items || [];
+            if (!selectedFosContextId && nextItems.length) setSelectedFosContextId(nextItems[0].id);
         } catch (err) {
             console.error('General error in FOS loadData:', err);
             setError('Error de conexión con el servidor de estandarización.');
@@ -62,9 +68,27 @@ export default function FOSListPage() {
         setForm({
             code: fos.code,
             nombreProceso: fos.nombreProceso,
-            workstationId: fos.workstationId,
+            workstationId: fos.workstationId || fos.workstation?.id || '',
         });
         setIsModalOpen(true);
+    };
+
+    const handleViewOpen = async (fos) => {
+        setIsViewOpen(true);
+        setViewLoading(true);
+        setViewError('');
+        setViewFos(null);
+        setSelectedVersionNumber(null);
+        try {
+            const res = await apiClient.get(`/fos/${fos.id}`);
+            setViewFos(res.data);
+            const latest = res.data?.versions?.[0]?.versionNumber ?? null;
+            setSelectedVersionNumber(latest);
+        } catch (err) {
+            setViewError(err.response?.data?.message || 'No se pudo cargar el detalle de la FOS.');
+        } finally {
+            setViewLoading(false);
+        }
     };
 
     const createFOS = async () => {
@@ -157,7 +181,11 @@ export default function FOSListPage() {
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {items.map((fos) => (
-                                    <tr key={fos.id} className="hover:bg-blue-50/40 transition-all group">
+                                    <tr
+                                        key={fos.id}
+                                        className="hover:bg-blue-50/40 transition-all group cursor-pointer"
+                                        onClick={() => handleViewOpen(fos)}
+                                    >
                                         <td className="px-6 py-4">
                                             <span className="font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg text-sm border border-blue-100">
                                                 {fos.code}
@@ -182,20 +210,20 @@ export default function FOSListPage() {
                                             {statusBadge(fos.estado)}
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="flex justify-end gap-2">
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
                                                     className="font-bold text-[10px] tracking-widest text-blue-600"
-                                                    onClick={() => handleEditOpen(fos)}
+                                                    onClick={(e) => { e.stopPropagation(); handleEditOpen(fos); }}
                                                 >
                                                     <Edit2 size={12} className="mr-1" /> EDITAR
                                                 </Button>
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="sm" 
-                                                    className="font-bold text-[10px] tracking-widest text-gray-500 hover:text-blue-600"
-                                                    onClick={() => navigate(`/fos/${fos.id}`)}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="font-bold text-[10px] tracking-widest text-gray-500"
+                                                    onClick={(e) => { e.stopPropagation(); handleViewOpen(fos); }}
                                                 >
                                                     <Eye size={12} className="mr-1" /> VER
                                                 </Button>
@@ -218,7 +246,41 @@ export default function FOSListPage() {
                 )}
             </Card>
 
-            <ModuleFormats module="fos" />
+            <div className="mt-6">
+                <Card className="border border-gray-100">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                            <div className="text-xs font-black uppercase tracking-widest text-gray-400">Contexto de registro</div>
+                            <div className="text-sm font-bold text-gray-800">Selecciona el estándar (FOS) para guardar y consultar el historial</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                                Uso rápido: 1) Selecciona un FOS. 2) En “Formatos N1” selecciona un formato (se muestra a la derecha). 3) Haz clic en `ABRIR` o `DILIGENCIAR`.
+                                4) Presiona `GUARDAR REGISTRO`. 5) El resultado queda en el panel derecho `Vista / Historial` para ese FOS.
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <select
+                                className="form-input gemba-input"
+                                value={selectedFosContextId}
+                                onChange={(e) => setSelectedFosContextId(e.target.value)}
+                                style={{ minWidth: 320 }}
+                            >
+                                <option value="">-- Seleccione un FOS --</option>
+                                {items.map((fos) => (
+                                    <option key={fos.id} value={fos.id}>{fos.code} - {fos.nombreProceso}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </Card>
+            </div>
+
+            <ModuleFormats
+                module="fos"
+                context={{
+                    fosId: selectedFosContextId || null,
+                    fosCode: items.find((i) => i.id === selectedFosContextId)?.code || null,
+                }}
+            />
 
             <Modal
                 isOpen={isModalOpen}
@@ -269,6 +331,87 @@ export default function FOSListPage() {
                             {isEditMode ? 'Guardar Cambios' : 'Crear FOS'}
                         </Button>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={isViewOpen}
+                onClose={() => setIsViewOpen(false)}
+                title="Detalle del Estándar (FOS)"
+                maxWidth="1100px"
+                actions={(
+                    <div className="flex gap-2">
+                        {viewFos && (
+                            <Button
+                                variant="primary"
+                                onClick={() => {
+                                    setIsViewOpen(false);
+                                    handleEditOpen(viewFos);
+                                }}
+                                className="bg-blue-600 font-bold"
+                            >
+                                Editar
+                            </Button>
+                        )}
+                        <Button variant="ghost" onClick={() => setIsViewOpen(false)}>Cerrar</Button>
+                    </div>
+                )}
+            >
+                <div className="p-6">
+                    {viewLoading ? (
+                        <p className="text-muted">Cargando detalle...</p>
+                    ) : viewError ? (
+                        <div className="alert alert-danger">{viewError}</div>
+                    ) : viewFos ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6">
+                            <Card className="border border-gray-100">
+                                <div className="text-xs font-black uppercase tracking-widest text-gray-400">Resumen</div>
+                                <div className="mt-3">
+                                    <div className="text-sm font-black text-gray-800">{viewFos.code}</div>
+                                    <div className="text-sm font-bold text-gray-600 mt-1">{viewFos.nombreProceso}</div>
+                                    <div className="text-xs text-gray-500 mt-2">
+                                        Estación: {viewFos.workstation?.name || 'N/D'} ({viewFos.workstation?.code || '—'})
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">Versión actual: v{viewFos.versionActual}</div>
+                                    <div className="text-xs text-gray-500 mt-1">Estado: {viewFos.estado || 'N/D'}</div>
+                                </div>
+
+                                <div className="mt-6">
+                                    <div className="text-xs font-black uppercase tracking-widest text-gray-400">Historial de versiones</div>
+                                    <div className="mt-3 flex flex-col gap-2" style={{ maxHeight: 360, overflow: 'auto' }}>
+                                        {(viewFos.versions || []).map((v) => (
+                                            <button
+                                                key={v.id}
+                                                className={`text-left p-3 rounded-xl border transition-all ${selectedVersionNumber === v.versionNumber ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                                                onClick={() => setSelectedVersionNumber(v.versionNumber)}
+                                            >
+                                                <div className="text-xs font-black text-gray-700">v{v.versionNumber}</div>
+                                                <div className="text-[11px] text-gray-500 mt-1">{new Date(v.createdAt).toLocaleString()}</div>
+                                                {v.changelog && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{v.changelog}</div>}
+                                            </button>
+                                        ))}
+                                        {!viewFos.versions?.length && (
+                                            <div className="text-sm text-gray-500">Sin versiones registradas.</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </Card>
+
+                            <Card className="border border-gray-100">
+                                <div className="text-xs font-black uppercase tracking-widest text-gray-400">Contenido de versión</div>
+                                <div className="text-sm text-gray-600 mt-2">
+                                    {selectedVersionNumber ? `Mostrando v${selectedVersionNumber}` : 'Selecciona una versión'}
+                                </div>
+                                <pre className="mt-4 text-[11px] bg-gray-50 border border-gray-200 rounded-xl p-4 overflow-auto" style={{ maxHeight: 520 }}>
+                                    {JSON.stringify(
+                                        (viewFos.versions || []).find((v) => v.versionNumber === selectedVersionNumber)?.data || {},
+                                        null,
+                                        2
+                                    )}
+                                </pre>
+                            </Card>
+                        </div>
+                    ) : null}
                 </div>
             </Modal>
         </div>

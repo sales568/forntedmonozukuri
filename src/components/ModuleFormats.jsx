@@ -1,23 +1,50 @@
 import { useEffect, useState } from 'react';
 import { Card, Button, Badge, Modal } from './ui';
 import apiClient from '../api/client';
-import { FileSpreadsheet, Edit3, Download, Save, X, Activity } from 'lucide-react';
+import { FileSpreadsheet, Edit3, Download, Save, X, History, Eye, BadgeCheck, ImageUp, FileImage } from 'lucide-react';
 
-export default function ModuleFormats({ module }) {
+function toBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            const base64 = result.includes(',') ? result.split(',')[1] : result;
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+export default function ModuleFormats({ module, context }) {
     const [forms, setForms] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [activeForm, setActiveForm] = useState(null);
     const [selectedForm, setSelectedForm] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [payload, setPayload] = useState({});
     const [extraNotes, setExtraNotes] = useState('');
+    const [submissions, setSubmissions] = useState([]);
+    const [submissionsLoading, setSubmissionsLoading] = useState(false);
+    const [selectedSubmission, setSelectedSubmission] = useState(null);
+    const [saveStatus, setSaveStatus] = useState('');
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [previewLoading, setPreviewLoading] = useState(false);
 
     const loadForms = async () => {
         setLoading(true);
         try {
             const res = await apiClient.get('/templates/forms');
-            const filtered = res.data.filter(f => f.module === module);
+            const filtered = res.data
+                .filter(f => f.module === module)
+                // En FOS, "Continuación" se descarga junto con el análisis principal (Excel). El flujo se unifica.
+                .filter(f => !(module === 'fos' && f.id === 'fos-continuacion'));
             setForms(filtered);
+            if (module === 'fos' && !activeForm && filtered.length) {
+                // Mejora el flujo: muestra algo a la derecha sin que el usuario tenga que adivinar.
+                selectActiveForm(filtered[0]);
+            }
         } catch (err) {
             setError('Error al cargar formatos');
         } finally {
@@ -26,8 +53,60 @@ export default function ModuleFormats({ module }) {
     };
 
     useEffect(() => { loadForms(); }, [module]);
+    useEffect(() => {
+        if (module === 'fos' && activeForm) selectActiveForm(activeForm);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [context?.fosId]);
 
-    const downloadTemplate = async (id, title) => {
+    const loadPreview = async (formId) => {
+        setPreviewLoading(true);
+        try {
+            const res = await apiClient.get(`/templates/forms/${formId}/preview`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            setPreviewUrl((prev) => {
+                if (prev) window.URL.revokeObjectURL(prev);
+                return url;
+            });
+        } catch (err) {
+            setPreviewUrl((prev) => {
+                if (prev) window.URL.revokeObjectURL(prev);
+                return '';
+            });
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+
+    const uploadPreview = async (formId, file) => {
+        try {
+            const contentBase64 = await toBase64(file);
+            await apiClient.post(`/templates/forms/${formId}/preview`, { filename: file.name, contentBase64 });
+            await loadPreview(formId);
+            alert('Vista previa cargada.');
+        } catch (err) {
+            alert(err.response?.data?.message || 'No se pudo cargar la vista previa.');
+        }
+    };
+
+    const loadSubmissions = async (formId) => {
+        setSubmissionsLoading(true);
+        setSelectedSubmission(null);
+        setSaveStatus('');
+        try {
+            const params = {};
+            if (module === 'fos' && context?.fosId) params.fosId = context.fosId;
+            const res = await apiClient.get(`/templates/forms/${formId}/submissions`, { params });
+            setSubmissions(Array.isArray(res.data) ? res.data : []);
+            return Array.isArray(res.data) ? res.data : [];
+        } catch (err) {
+            setSubmissions([]);
+            return [];
+        } finally {
+            setSubmissionsLoading(false);
+        }
+    };
+
+    const download = async (id, title) => {
         try {
             const res = await apiClient.get(`/templates/forms/${id}/download`, { responseType: 'blob' });
             const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -37,41 +116,56 @@ export default function ModuleFormats({ module }) {
             document.body.appendChild(link);
             link.click();
             link.remove();
-        } catch (err) { alert('Error al descargar plantilla'); }
+        } catch (err) { alert('Error al descargar'); }
     };
 
-    const downloadFilledData = async (format = 'excel') => {
-        if (!selectedForm) return;
-        try {
-            const endpoint = format === 'pdf' ? 'download-filled-pdf' : 'download-filled';
-            const res = await apiClient.post(`/templates/forms/${selectedForm.id}/${endpoint}`, { payload }, { responseType: 'blob' });
-            const extension = format === 'pdf' ? 'pdf' : 'xlsx';
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `${selectedForm.title}-Diligenciado.${extension}`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (err) { alert(`Error al descargar ${format.toUpperCase()}`); }
-    };
-
-    const openForm = (form) => {
+    const openForm = async (form) => {
         setSelectedForm(form);
         const init = {};
         form.onlineFields.forEach(f => init[f] = '');
         setPayload(init);
         setExtraNotes('');
         setIsModalOpen(true);
+        const rows = await loadSubmissions(form.id);
+        const latest = rows[0];
+        if (latest?.payload && typeof latest.payload === 'object') {
+            setPayload((prev) => ({ ...prev, ...latest.payload }));
+            setExtraNotes(latest.payload.observaciones || latest.payload.observations || '');
+            setSelectedSubmission(latest);
+        }
+    };
+
+    const selectActiveForm = async (form) => {
+        setActiveForm(form);
+        await loadPreview(form.id);
+        if (module === 'fos' && !context?.fosId) {
+            setSubmissions([]);
+            setSelectedSubmission(null);
+            return;
+        }
+        const rows = await loadSubmissions(form.id);
+        if (rows[0]) setSelectedSubmission(rows[0]);
     };
 
     const save = async () => {
         try {
-            await apiClient.post(`/templates/forms/${selectedForm.id}/submit`, { 
-                payload: { ...payload, observations: extraNotes } 
+            if (!selectedForm) return;
+            if (module === 'fos' && !context?.fosId) {
+                alert('Selecciona un FOS (estándar) para guardar el registro y consultar su historial.');
+                return;
+            }
+            setSaveStatus('Guardando...');
+            const observationsKey = selectedForm.onlineFields?.includes('observaciones') ? 'observaciones' : 'observations';
+            await apiClient.post(`/templates/forms/${selectedForm.id}/submit`, {
+                payload: { ...payload, [observationsKey]: extraNotes },
+                context: module === 'fos' ? { fosId: context?.fosId, fosCode: context?.fosCode } : undefined,
             });
+            setSaveStatus('Guardado correctamente.');
+            const rows = await loadSubmissions(selectedForm.id);
+            setSubmissions(rows);
+            if (rows[0]) setSelectedSubmission(rows[0]);
             setIsModalOpen(false);
-            alert('Registro guardado exitosamente en el sistema Gemba.');
+            if (activeForm?.id === selectedForm.id) await selectActiveForm(activeForm);
         } catch (err) { alert('Error al guardar el registro.'); }
     };
 
@@ -89,164 +183,383 @@ export default function ModuleFormats({ module }) {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {forms.map(form => (
-                    <Card key={form.id} className="border-2 border-blue-900/5 hover:border-blue-900/20 transition-all group">
-                        <div className="p-5">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
-                                    <FileSpreadsheet className="text-blue-600" size={20} />
+            {module === 'fos' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {forms.map(form => (
+                            <Card
+                                key={form.id}
+                                className={`border-2 transition-all group cursor-pointer ${activeForm?.id === form.id ? 'border-blue-600/40' : 'border-blue-900/5 hover:border-blue-900/20'}`}
+                                onClick={() => selectActiveForm(form)}
+                            >
+                                <div className="p-5">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                                            <FileSpreadsheet className="text-blue-600" size={20} />
+                                        </div>
+                                        <Badge variant="neutral" className="text-[9px] font-black tracking-widest">{form.sheetName.toUpperCase()}</Badge>
+                                    </div>
+                                    <h4 className="font-black text-blue-900 text-sm leading-tight mb-6 h-10 overflow-hidden uppercase">{form.title}</h4>
+
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="flex-1 border border-gray-200 font-bold text-[10px]"
+                                            onClick={(e) => { e.stopPropagation(); download(form.id, form.title); }}
+                                        >
+                                            <Download size={12} className="mr-1" /> EXCEL
+                                        </Button>
+                                        <Button
+                                            variant="primary"
+                                            size="sm"
+                                            className="flex-1 font-bold text-[10px] bg-blue-900"
+                                            onClick={(e) => { e.stopPropagation(); openForm(form); }}
+                                        >
+                                            <Edit3 size={12} className="mr-1" /> DILIGENCIAR
+                                        </Button>
+                                    </div>
                                 </div>
-                                <Badge variant="neutral" className="text-[9px] font-black tracking-widest">{form.sheetName.toUpperCase()}</Badge>
-                            </div>
-                            <h4 className="font-black text-blue-900 text-sm leading-tight mb-6 h-10 overflow-hidden uppercase">{form.title}</h4>
-                            
-                            <div className="flex gap-2">
-                                <Button variant="ghost" size="sm" className="flex-1 border border-gray-200 font-bold text-[9px] px-1" onClick={() => downloadTemplate(form.id, form.title)}>
-                                    <Download size={10} className="mr-1"/> EXCEL
-                                </Button>
-                                <Button variant="primary" size="sm" className="flex-1 font-bold text-[9px] bg-blue-900 px-1" onClick={() => openForm(form)}>
-                                    <Edit3 size={10} className="mr-1"/> DILIGENCIAR
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
-                ))}
-            </div>
-
-            <Modal 
-                isOpen={isModalOpen} 
-                onClose={() => setIsModalOpen(false)} 
-                title={selectedForm?.title}
-                maxWidth="1200px"
-            >
-                <div className="flex flex-col lg:flex-row bg-gray-50/50 rounded-xl border border-gray-200 overflow-hidden shadow-sm min-h-[700px]">
-                    {/* Panel Lateral de IA Asistente */}
-                    <div className="w-full lg:w-80 bg-slate-900 text-white p-8 flex flex-col border-r border-slate-800">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="p-2 bg-blue-500 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-                                <Activity size={20} className="text-white" />
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400">Monozukuri AI</p>
-                                <p className="text-sm font-bold">Asistente Genba</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-6 flex-1">
-                            <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                                <p className="text-xs font-bold text-blue-300 uppercase mb-2">Contexto del Formato</p>
-                                <p className="text-xs leading-relaxed text-slate-300 italic">
-                                    "Hola, soy tu asistente de estandarización. Este registro de <strong>{module.toUpperCase()}</strong> es vital para la trazabilidad del proceso. Asegúrate de que los valores sean precisos para evitar desviaciones en el tablero de mando."
-                                </p>
-                            </div>
-
-                            <div className="space-y-4">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tips de Diligenciamiento</p>
-                                <div className="flex gap-3">
-                                    <div className="mt-1"><Badge variant="info">1</Badge></div>
-                                    <p className="text-[11px] text-slate-400">Verifica que el <strong>Código</strong> coincida con el estándar físico en el puesto.</p>
-                                </div>
-                                <div className="flex gap-3">
-                                    <div className="mt-1"><Badge variant="info">2</Badge></div>
-                                    <p className="text-[11px] text-slate-400">Usa las <strong>Notas de Campo</strong> para describir cualquier anomalía detectada en el turno.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="mt-auto pt-8 border-t border-slate-800 text-center">
-                            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Powered by Monozukuri Intelligence</p>
-                        </div>
+                            </Card>
+                        ))}
                     </div>
 
-                    {/* Contenido del Formulario */}
-                    <div className="flex-1 flex flex-col">
-                        {/* Encabezado */}
-                        <div className="bg-blue-900 text-white p-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
-                            <div>
-                                <div className="text-blue-300 text-xs font-black tracking-widest uppercase mb-1">Registro Oficial Monozukuri</div>
-                                <h2 className="text-2xl font-black">{selectedForm?.title}</h2>
+                    <Card className="border border-gray-200">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="font-black text-blue-900 text-sm uppercase tracking-tight">Vista / Historial</div>
+                            {activeForm?.id && (
+                                <Button variant="ghost" size="sm" className="text-[10px] font-bold" onClick={() => selectActiveForm(activeForm)}>
+                                    Actualizar
+                                </Button>
+                            )}
+                        </div>
+
+                        <div className="mb-3 p-3 rounded-xl border border-gray-200 bg-gray-50">
+                            <div className="flex items-center gap-2 text-[11px] font-black text-gray-700">
+                                <BadgeCheck size={14} className="text-blue-600" /> FOS seleccionado
                             </div>
-                            <div className="flex flex-wrap gap-4 bg-blue-950/50 p-4 rounded-lg border border-blue-800/50 w-full xl:w-auto">
-                                <div className="flex flex-col flex-1 min-w-[120px]">
-                                    <label className="text-[10px] text-blue-300 font-bold uppercase mb-1">Código</label>
-                                    <input className="bg-transparent border-b border-blue-400 text-white font-mono text-sm focus:outline-none focus:border-white transition-colors pb-1 placeholder-blue-400/50" value={payload.codigo || ''} onChange={e => setPayload({...payload, codigo: e.target.value})} placeholder="MZ-PR-001" />
+                            <div className="text-xs font-bold text-gray-600 mt-1">
+                                {context?.fosCode ? context.fosCode : 'No seleccionado'}
+                            </div>
+                            {!context?.fosId && (
+                                <div className="text-[11px] text-gray-500 mt-1">
+                                    Selecciona un FOS arriba para ver/guardar registros.
                                 </div>
-                                <div className="flex flex-col w-20">
-                                    <label className="text-[10px] text-blue-300 font-bold uppercase mb-1">Versión</label>
-                                    <input className="bg-transparent border-b border-blue-400 text-white font-mono text-sm focus:outline-none focus:border-white transition-colors pb-1 text-center" value={payload.version || '01'} onChange={e => setPayload({...payload, version: e.target.value})} />
+                            )}
+                        </div>
+
+                        {!activeForm ? (
+                            <div className="text-sm text-gray-500">
+                                Selecciona un formato de la izquierda para ver su vista previa o su historial.
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs font-black text-gray-700">{activeForm.title}</div>
+                                        <div className="text-[11px] text-gray-500 mt-1">{activeForm.sheetName}</div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="ghost" size="sm" className="border border-gray-200 text-[10px] font-bold" onClick={() => download(activeForm.id, activeForm.title)}>
+                                            <Download size={12} className="mr-1" /> EXCEL
+                                        </Button>
+                                        <Button variant="primary" size="sm" className="bg-blue-900 text-[10px] font-bold" onClick={() => openForm(activeForm)}>
+                                            <Edit3 size={12} className="mr-1" /> ABRIR
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col flex-1 min-w-[130px]">
-                                    <label className="text-[10px] text-blue-300 font-bold uppercase mb-1">Fecha</label>
-                                    <input type="date" className="bg-transparent border-b border-blue-400 text-white font-mono text-sm focus:outline-none focus:border-white transition-colors pb-1" style={{ colorScheme: 'dark' }} value={payload.fecha || ''} onChange={e => setPayload({...payload, fecha: e.target.value})} />
+
+                                {context?.fosId ? (
+                                    submissionsLoading ? (
+                                        <p className="text-xs text-muted">Cargando registros...</p>
+                                    ) : submissions.length ? (
+                                        <div>
+                                            <div className="text-[11px] font-black text-gray-700 mb-2">Últimos registros</div>
+                                            <div className="flex flex-col gap-2" style={{ maxHeight: 260, overflow: 'auto' }}>
+                                                {submissions.slice(0, 12).map((s, idx) => (
+                                                    <button
+                                                        key={`${s.submittedAt}-${idx}`}
+                                                        className={`text-left p-3 rounded-xl border transition-all ${selectedSubmission?.submittedAt === s.submittedAt ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+                                                        onClick={() => setSelectedSubmission(s)}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-xs font-black text-gray-700">{new Date(s.submittedAt).toLocaleString()}</span>
+                                                            <Eye size={14} className="text-gray-400" />
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">
+                                                            {(s.payload?.codigo && `Doc: ${s.payload.codigo}`) || 'Registro'}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {selectedSubmission?.payload && (
+                                                <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
+                                                    <div className="px-3 py-2 bg-gray-50 text-[11px] font-black text-gray-700">Resumen del registro</div>
+                                                    <div className="p-3 grid grid-cols-1 gap-2" style={{ maxHeight: 200, overflow: 'auto' }}>
+                                                        {Object.entries(selectedSubmission.payload)
+                                                            .filter(([k, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+                                                            .filter(([k]) => !['observaciones', 'observations'].includes(k))
+                                                            .slice(0, 12)
+                                                            .map(([k, v]) => (
+                                                                <div key={k} className="flex items-start justify-between gap-3">
+                                                                    <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{k.replace(/_/g, ' ')}</div>
+                                                                    <div className="text-[11px] font-bold text-gray-700 text-right break-words">{String(v)}</div>
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <div className="text-[11px] font-black text-gray-700 mb-2">Sin diligenciar</div>
+                                            {previewLoading ? (
+                                                <p className="text-xs text-muted">Cargando vista previa...</p>
+                                            ) : previewUrl ? (
+                                                <img src={previewUrl} alt="Vista previa" className="w-full rounded-xl border border-gray-200" />
+                                            ) : (
+                                                <div className="p-4 rounded-xl border border-dashed border-gray-300 text-sm text-gray-500 flex items-center gap-2">
+                                                    <FileImage size={18} className="text-gray-400" />
+                                                    Sube una foto del formato para guiar el diligenciamiento.
+                                                </div>
+                                            )}
+                                            <div className="mt-3">
+                                                <label className="inline-flex items-center gap-2 text-xs font-bold text-blue-700 cursor-pointer">
+                                                    <ImageUp size={16} />
+                                                    Cargar foto del formato
+                                                    <input
+                                                        type="file"
+                                                        accept="image/png,image/jpeg,image/webp"
+                                                        className="hidden"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) uploadPreview(activeForm.id, file);
+                                                            e.target.value = '';
+                                                        }}
+                                                    />
+                                                </label>
+                                            </div>
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="text-sm text-gray-500">
+                                        Selecciona un FOS arriba para ver el historial y guardar nuevos registros.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </Card>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {forms.map(form => (
+                        <Card key={form.id} className="border-2 border-blue-900/5 hover:border-blue-900/20 transition-all group">
+                            <div className="p-5">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                                        <FileSpreadsheet className="text-blue-600" size={20} />
+                                    </div>
+                                    <Badge variant="neutral" className="text-[9px] font-black tracking-widest">{form.sheetName.toUpperCase()}</Badge>
                                 </div>
+                                <h4 className="font-black text-blue-900 text-sm leading-tight mb-6 h-10 overflow-hidden uppercase">{form.title}</h4>
+
+                                <div className="flex gap-2">
+                                    <Button variant="ghost" size="sm" className="flex-1 border border-gray-200 font-bold text-[10px]" onClick={() => download(form.id, form.title)}>
+                                        <Download size={12} className="mr-1" /> EXCEL
+                                    </Button>
+                                    <Button variant="primary" size="sm" className="flex-1 font-bold text-[10px] bg-blue-900" onClick={() => openForm(form)}>
+                                        <Edit3 size={12} className="mr-1" /> DILIGENCIAR
+                                    </Button>
+                                </div>
+                            </div>
+                        </Card>
+                    ))}
+                </div>
+            )}
+
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={`${selectedForm?.title} - Gemba Form N1`}
+                maxWidth="1100px"
+            >
+                <div className="flex flex-col lg:flex-row gap-6">
+                    <div className="paper-form shadow-2xl flex-1">
+                        {/* Encabezado Estilo Industrial Premium */}
+                        <div className="paper-header">
+                            <div className="paper-logo-box">
+                                <span className="paper-logo-text">MONOZUKURI</span>
+                                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mt-1">Industrial MES</span>
+                            </div>
+                            <div className="paper-title-box">
+                                {selectedForm?.title || 'Formato de Registro'}
+                            </div>
+                            <div className="paper-meta-box">
+                                {selectedForm?.onlineFields?.includes('codigo') && (
+                                    <div className="paper-meta-row">
+                                        <span className="text-gray-400">Documento:</span>
+                                        <input value={payload.codigo || ''} onChange={e => setPayload({ ...payload, codigo: e.target.value })} placeholder="MZ-PR-001" />
+                                    </div>
+                                )}
+                                {selectedForm?.onlineFields?.includes('version') && (
+                                    <div className="paper-meta-row">
+                                        <span className="text-gray-400">Versión:</span>
+                                        <input value={payload.version || '01'} onChange={e => setPayload({ ...payload, version: e.target.value })} />
+                                    </div>
+                                )}
+                                {selectedForm?.onlineFields?.includes('fecha') && (
+                                    <div className="paper-meta-row">
+                                        <span className="text-gray-400">Fecha:</span>
+                                        <input type="date" value={payload.fecha || ''} onChange={e => setPayload({ ...payload, fecha: e.target.value })} />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        {/* Grilla de Datos N1 */}
-                        <div className="p-6 md:p-8 overflow-y-auto max-h-[60vh]">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                                {selectedForm?.onlineFields.filter(f => !['codigo', 'version', 'fecha', 'fecha_creacion', 'fecha_modificaciones', 'observaciones', 'pagina', 'aprobacion', 'validada_por'].includes(f)).map((field) => (
-                                    <div key={field} className="flex flex-col gap-2">
-                                        <label className="text-xs font-black uppercase text-blue-900 tracking-tight">{field.replace(/_/g, ' ')}</label>
-                                        <input 
-                                            className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 transition-all text-sm font-medium shadow-sm"
-                                            value={payload[field] || ''} 
-                                            onChange={e => setPayload({...payload, [field]: e.target.value})}
-                                            placeholder={`Ingresar ${field.replace(/_/g, ' ')}...`}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                            
+                        {/* Grilla de Datos Optimizada */}
+                        <div className="paper-grid">
+                            {selectedForm?.onlineFields
+                                .filter(f => !['codigo', 'version', 'fecha', 'observaciones', 'observations'].includes(f))
+                                .map((field) => {
+                                    const isLongText = ['etapas', 'etapas_adicionales', 'operaciones', 'conocimientos'].includes(field);
+                                    const isFullWidth = ['proceso', 'operacion', 'estacion', 'etapas', 'etapas_adicionales', 'operaciones', 'conocimientos'].includes(field);
+                                    return (
+                                        <div key={field} className={`paper-input-box ${isFullWidth ? 'full-width' : ''}`}>
+                                            <label>{field.replace(/_/g, ' ')}</label>
+                                            {isLongText ? (
+                                                <textarea
+                                                    value={payload[field] || ''}
+                                                    onChange={e => setPayload({ ...payload, [field]: e.target.value })}
+                                                    placeholder={`Ingrese ${field.replace(/_/g, ' ')}...`}
+                                                ></textarea>
+                                            ) : (
+                                                <input
+                                                    value={payload[field] || ''}
+                                                    onChange={e => setPayload({ ...payload, [field]: e.target.value })}
+                                                    placeholder={`Ingrese ${field.replace(/_/g, ' ')}...`}
+                                                />
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            }
+
                             {/* Observaciones a ancho completo */}
-                            <div className="flex flex-col gap-2 mb-10">
-                                <label className="text-xs font-black uppercase text-blue-900 tracking-tight flex items-center gap-2">
-                                    <Edit3 size={14} className="text-blue-500"/> Notas de Campo / Observaciones del Turno
-                                </label>
-                                <textarea 
-                                    className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 transition-all text-sm resize-y shadow-sm leading-relaxed"
-                                    style={{ minHeight: '120px' }}
+                            <div className="paper-input-box full-width">
+                                <label>Notas / Observaciones</label>
+                                <textarea
                                     value={extraNotes}
                                     onChange={e => setExtraNotes(e.target.value)}
-                                    placeholder="Describa de forma clara los hallazgos, desviaciones o comentarios relevantes ocurridos durante el proceso..."
+                                    placeholder="Describa hallazgos, desviaciones o comentarios relevantes..."
                                 ></textarea>
-                            </div>
-
-                            {/* Firmas Estilo Moderno */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-gray-200 mt-4">
-                                <div className="flex flex-col items-center">
-                                    <div className="w-full max-w-[250px] border-b-2 border-gray-300 h-10 mb-3"></div>
-                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Elaboró (Operario)</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                    <div className="w-full max-w-[250px] border-b-2 border-gray-300 h-10 mb-3"></div>
-                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Revisó (Supervisor)</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                    <div className="w-full max-w-[250px] border-b-2 border-gray-300 h-10 mb-3"></div>
-                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Aprobó (Gerencia)</span>
-                                </div>
                             </div>
                         </div>
 
-                        <div className="modal-actions p-6 bg-white border-t border-gray-100 mt-auto flex flex-col sm:flex-row justify-between gap-4">
-                            <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="order-2 sm:order-1">
-                                <X size={18} className="mr-2" /> Cancelar
-                            </Button>
-                            <div className="flex flex-wrap gap-2 order-1 sm:order-2">
-                                <Button variant="ghost" className="border border-gray-200 font-bold text-[11px]" onClick={() => downloadFilledData('excel')}>
-                                    <Download size={14} className="mr-2 text-green-600" /> EXCEL
-                                </Button>
-                                <Button variant="ghost" className="border border-gray-200 font-bold text-[11px]" onClick={() => downloadFilledData('pdf')}>
-                                    <Download size={14} className="mr-2 text-red-600" /> PDF
-                                </Button>
-                                <Button variant="primary" className="bg-blue-900 px-8 py-3 font-bold text-sm shadow-lg shadow-blue-900/20" onClick={save}>
-                                    <Save size={18} className="mr-2" /> GUARDAR
-                                </Button>
+                        {/* Firmas */}
+                        <div className="paper-footer">
+                            <div className="paper-signature-card">
+                                <div className="paper-signature-space">Espacio para Firma Digital</div>
+                                <span className="paper-signature-label">ELABORÓ (OPERARIO)</span>
+                            </div>
+                            <div className="paper-signature-card">
+                                <div className="paper-signature-space">Espacio para Firma Digital</div>
+                                <span className="paper-signature-label">REVISÓ (SUPERVISOR)</span>
+                            </div>
+                            <div className="paper-signature-card">
+                                <div className="paper-signature-space">Espacio para Firma Digital</div>
+                                <span className="paper-signature-label">APROBÓ (GERENCIA)</span>
                             </div>
                         </div>
                     </div>
+
+                    {/* Historial / Resultados */}
+                    <div className="w-full lg:w-[360px]">
+                        <Card className="border border-gray-200">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2 font-black text-blue-900">
+                                    <History size={16} className="text-blue-600" /> Historial
+                                </div>
+                                {selectedForm?.id && (
+                                    <Button variant="ghost" size="sm" onClick={() => loadSubmissions(selectedForm.id)} className="text-[10px] font-bold">
+                                        Actualizar
+                                    </Button>
+                                )}
+                            </div>
+
+                            {module === 'fos' && (
+                                <div className="mb-3 p-3 rounded-xl border border-gray-200 bg-gray-50">
+                                    <div className="flex items-center gap-2 text-[11px] font-black text-gray-700">
+                                        <BadgeCheck size={14} className="text-blue-600" /> Contexto FOS
+                                    </div>
+                                    <div className="text-xs font-bold text-gray-600 mt-1">
+                                        {context?.fosCode ? context.fosCode : 'No seleccionado'}
+                                    </div>
+                                    <div className="text-[11px] text-gray-500 mt-1">
+                                        Aquí se muestran los registros guardados para el FOS seleccionado. Después de `GUARDAR REGISTRO`, revisa esta lista.
+                                    </div>
+                                    {!context?.fosId && (
+                                        <div className="text-[11px] text-gray-500 mt-1">
+                                            Selecciona un FOS arriba para habilitar guardado e historial.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {submissionsLoading ? (
+                                <p className="text-xs text-muted">Cargando registros...</p>
+                            ) : submissions.length === 0 ? (
+                                <p className="text-xs text-muted">Aún no hay registros guardados para este formato.</p>
+                            ) : (
+                                <div className="flex flex-col gap-2" style={{ maxHeight: 420, overflow: 'auto' }}>
+                                    {submissions.slice(0, 20).map((s, idx) => (
+                                        <button
+                                            key={`${s.submittedAt}-${idx}`}
+                                            className={`text-left p-3 rounded-xl border transition-all ${selectedSubmission?.submittedAt === s.submittedAt ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-white/5'}`}
+                                            onClick={() => {
+                                                setSelectedSubmission(s);
+                                                if (s?.payload && typeof s.payload === 'object') {
+                                                    setPayload((prev) => ({ ...prev, ...s.payload }));
+                                                    setExtraNotes(s.payload.observaciones || s.payload.observations || '');
+                                                }
+                                            }}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-xs font-black text-gray-700">{new Date(s.submittedAt).toLocaleString()}</span>
+                                                <Eye size={14} className="text-gray-400" />
+                                            </div>
+                                            <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">
+                                                {(s.payload?.codigo && `Doc: ${s.payload.codigo}`) || (s.payload?.fos_id && `FOS: ${s.payload.fos_id}`) || 'Registro'}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {selectedSubmission?.payload && (
+                                <div className="mt-4">
+                                    <div className="text-[11px] font-black text-gray-700 mb-2">Detalle del registro</div>
+                                    <pre className="text-[10px] bg-gray-50 border border-gray-200 rounded-xl p-3 overflow-auto" style={{ maxHeight: 180 }}>
+                                        {JSON.stringify(selectedSubmission.payload, null, 2)}
+                                    </pre>
+                                </div>
+                            )}
+
+                            {saveStatus && (
+                                <div className="mt-3 text-xs font-bold text-gray-600">
+                                    {saveStatus}
+                                </div>
+                            )}
+                        </Card>
+                    </div>
+                </div>
+
+                <div className="modal-actions mt-6">
+                    <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
+                        <X size={18} className="mr-2" /> Cancelar
+                    </Button>
+                    <Button variant="primary" className="bg-blue-900 px-12 py-4 font-bold text-lg" onClick={save}>
+                        <Save size={20} className="mr-2" /> GUARDAR REGISTRO
+                    </Button>
                 </div>
             </Modal>
         </div>
