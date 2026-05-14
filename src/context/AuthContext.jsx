@@ -41,7 +41,17 @@ export function AuthProvider({ children }) {
             return userData;
         } catch (error) {
             console.error('Login error:', error);
-            throw new Error(error.response?.data?.message || 'Credenciales incorrectas');
+            // Distinguir entre "no hay backend" y "credenciales incorrectas"
+            if (error.response?.data?.message) {
+                throw new Error(error.response.data.message);
+            }
+            if (error.response?.status === 401 || error.response?.status === 400) {
+                throw new Error('Credenciales incorrectas');
+            }
+            if (!error.response) {
+                throw new Error('No se puede conectar con el servidor. ¿Está corriendo el backend en el puerto 3000?');
+            }
+            throw new Error(`Error inesperado (${error.response.status}). Intenta de nuevo.`);
         }
     };
 
@@ -50,7 +60,13 @@ export function AuthProvider({ children }) {
             const response = await apiClient.post('/admin/users', userData);
             return response.data;
         } catch (error) {
-            throw new Error(error.response?.data?.message || 'Error en el registro');
+            if (error.response?.data?.message) {
+                throw new Error(error.response.data.message);
+            }
+            if (!error.response) {
+                throw new Error('No se puede conectar con el servidor. ¿Está corriendo el backend?');
+            }
+            throw new Error('Error en el registro');
         }
     };
 
