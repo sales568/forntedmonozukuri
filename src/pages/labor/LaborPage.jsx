@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Users, UserPlus, Search, ToggleLeft, ToggleRight, Edit2, X, ChevronDown } from 'lucide-react';
+import { Users, UserPlus, Search, ToggleLeft, ToggleRight, Edit2, X, ChevronDown, Plus, Trash2, Layers } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Modal } from '../../components/ui';
 import apiClient from '../../api/client';
 
-const EMPTY_FORM = { name: '', email: '', password: '', area: '', position: '', roleId: '' };
+const EMPTY_FORM = { name: '', email: '', password: '', area: '', position: '', roleId: '', skills: [] };
 
 const roleBadge = (roleName) => {
     const map = {
@@ -32,23 +32,30 @@ export default function LaborPage() {
     const [editTarget, setEditTarget] = useState(null);
     const [form, setForm] = useState(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
+    const [allSkills, setAllSkills] = useState([]);
+    
+    const [areasModalOpen, setAreasModalOpen] = useState(false);
+    const [newAreaName, setNewAreaName] = useState('');
+    const [addingArea, setAddingArea] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
         setError('');
         try {
-            const params = {};
+            const params = { _t: Date.now() };
             if (search) params.search = search;
             if (filterArea) params.area = filterArea;
 
-            const [wRes, aRes, rRes] = await Promise.all([
+            const [wRes, aRes, rRes, sRes] = await Promise.all([
                 apiClient.get('/labor', { params }),
                 apiClient.get('/labor/areas'),
                 apiClient.get('/admin/roles'),
+                apiClient.get('/competencies/skills'),
             ]);
             setWorkers(wRes.data || []);
             setAreas(aRes.data || []);
             setRoles(rRes.data || []);
+            setAllSkills(sRes.data || []);
         } catch (err) {
             setError(err.response?.data?.message || 'No se pudo cargar la nómina de operarios.');
         } finally {
@@ -61,7 +68,15 @@ export default function LaborPage() {
     const openNew = () => { setEditTarget(null); setForm(EMPTY_FORM); setModalOpen(true); };
     const openEdit = (w) => {
         setEditTarget(w);
-        setForm({ name: w.name, email: w.email, password: '', area: w.area || '', position: w.position || '', roleId: w.role?.id || '' });
+        setForm({ 
+            name: w.name, 
+            email: w.email, 
+            password: '', 
+            area: w.area || '', 
+            position: w.position || '', 
+            roleId: w.role?.id || '',
+            skills: w.userSkills?.map(us => ({ skillId: us.skillId, level: us.level, certified: us.certified })) || []
+        });
         setModalOpen(true);
     };
     const closeModal = () => { setModalOpen(false); setEditTarget(null); setForm(EMPTY_FORM); };
@@ -69,13 +84,38 @@ export default function LaborPage() {
     const handleSave = async () => {
         setSaving(true);
         setError('');
+        const cleanSkills = [];
+        const seen = new Set();
+        form.skills.forEach(s => {
+            if (s.skillId && !seen.has(s.skillId)) {
+                cleanSkills.push({
+                    skillId: s.skillId,
+                    level: Number(s.level),
+                    certified: !!s.certified
+                });
+                seen.add(s.skillId);
+            }
+        });
+
+        console.log('Enviando skills para operario:', editTarget?.id, cleanSkills);
+
         try {
             if (editTarget) {
-                await apiClient.patch(`/labor/${editTarget.id}`, { name: form.name, area: form.area, position: form.position });
-                setSuccess('Operario actualizado.');
+                const response = await apiClient.patch(`/labor/${editTarget.id}`, { 
+                    name: form.name, 
+                    area: form.area, 
+                    position: form.position,
+                    isActive: form.isActive !== undefined ? form.isActive : true,
+                    skills: cleanSkills 
+                });
+                console.log('Respuesta PATCH servidor:', JSON.stringify(response.data, null, 2));
+                setWorkers(prev => prev.map(w => w.id === editTarget.id ? response.data : w));
+                setSuccess('Operario actualizado. Verifica la consola para detalles.');
             } else {
-                await apiClient.post('/labor', form);
-                setSuccess('Operario creado correctamente.');
+                const response = await apiClient.post('/labor', { ...form, skills: cleanSkills });
+                console.log('Respuesta POST servidor:', JSON.stringify(response.data, null, 2));
+                setWorkers(prev => [response.data, ...prev]);
+                setSuccess('Operario creado.');
             }
             closeModal();
             await loadData();
@@ -96,6 +136,34 @@ export default function LaborPage() {
         }
     };
 
+    const handleAddArea = async () => {
+        if (!newAreaName.trim()) return;
+        setAddingArea(true);
+        try {
+            await apiClient.post('/labor/areas', { name: newAreaName });
+            setNewAreaName('');
+            loadData();
+            setSuccess('Área creada correctamente.');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.response?.data?.message || 'No se pudo crear el área.');
+        } finally {
+            setAddingArea(false);
+        }
+    };
+
+    const handleDeleteArea = async (id) => {
+        if (!window.confirm('¿Eliminar esta área? Esto no afectará a los operarios ya asignados, pero dejará de estar disponible en las listas.')) return;
+        try {
+            await apiClient.delete(`/labor/areas/${id}`);
+            loadData();
+            setSuccess('Área eliminada correctamente.');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.response?.data?.message || 'No se pudo eliminar el área.');
+        }
+    };
+
     // Stats
     const total = workers.length;
     const active = workers.filter(w => w.isActive).length;
@@ -107,9 +175,14 @@ export default function LaborPage() {
                 title="Mano de Obra"
                 subtitle="Control de operarios: creación, áreas, cargos y acceso al sistema"
             >
-                <Button variant="primary" onClick={openNew} className="font-bold px-6 flex items-center gap-2">
-                    <UserPlus size={16} /> Nuevo Operario
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setAreasModalOpen(true)} className="font-bold px-4 flex items-center gap-2">
+                        <Layers size={16} /> Gestionar Áreas
+                    </Button>
+                    <Button variant="primary" onClick={openNew} className="font-bold px-6 flex items-center gap-2">
+                        <UserPlus size={16} /> Nuevo Operario
+                    </Button>
+                </div>
             </PageHeader>
 
             {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm font-semibold">{success}</div>}
@@ -158,7 +231,7 @@ export default function LaborPage() {
                         onChange={e => setFilterArea(e.target.value)}
                     >
                         <option value="">Todas las áreas</option>
-                        {areas.map(a => <option key={a} value={a}>{a}</option>)}
+                        {areas.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
                     </select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
@@ -179,7 +252,7 @@ export default function LaborPage() {
                                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400 text-left">Rol Sistema</th>
                                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400 text-left">Habilidades</th>
                                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400 text-center">Estado</th>
-                                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400 text-right">Acciones</th>
+                                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400 text-right">Editar</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
@@ -205,7 +278,7 @@ export default function LaborPage() {
                                         <td className="px-6 py-4">{roleBadge(worker.role?.name)}</td>
                                         <td className="px-6 py-4">
                                             <div className="flex flex-wrap gap-1">
-                                                {worker.userSkills?.slice(0, 3).map(us => (
+                                                {worker.userSkills?.map(us => (
                                                     <span key={us.id} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-semibold">
                                                         {us.skill?.name} Nv.{us.level}
                                                     </span>
@@ -281,7 +354,7 @@ export default function LaborPage() {
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-500 uppercase">Área de Trabajo *</label>
                             <input className="form-input" placeholder="Ej: Soldadura, Pintura, Ensamble" value={form.area} onChange={e => setForm(p => ({ ...p, area: e.target.value }))} list="areas-list" />
-                            <datalist id="areas-list">{areas.map(a => <option key={a} value={a} />)}</datalist>
+                            <datalist id="areas-list">{areas.map(a => <option key={a.id} value={a.name} />)}</datalist>
                         </div>
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-gray-500 uppercase">Cargo *</label>
@@ -303,6 +376,149 @@ export default function LaborPage() {
                                 </div>
                             </>
                         )}
+                    </div>
+
+                    {/* Skill Assignment Section */}
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest">Habilidades y Competencias</h3>
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setForm(p => ({ ...p, skills: [...p.skills, { skillId: '', level: 1, certified: false }] }))}
+                                className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1 h-7"
+                            >
+                                <Plus size={14} /> AGREGAR SKILL
+                            </Button>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {form.skills.map((s, idx) => (
+                                <div key={idx} className="flex gap-3 items-end bg-gray-50/50 p-3 rounded-lg border border-gray-100">
+                                    <div className="flex-1 flex flex-col gap-1">
+                                        <label className="text-[9px] font-bold text-gray-400 uppercase">Skill / Habilidad</label>
+                                        <select 
+                                            className="form-input text-sm" 
+                                            value={s.skillId} 
+                                            onChange={e => {
+                                                const newSkills = [...form.skills];
+                                                newSkills[idx].skillId = e.target.value;
+                                                setForm(p => ({ ...p, skills: newSkills }));
+                                            }}
+                                        >
+                                            <option value="">Selecciona una habilidad</option>
+                                            {allSkills.map(sk => {
+                                                const isSelected = form.skills.some((os, i) => os.skillId === sk.id && i !== idx);
+                                                return (
+                                                    <option key={sk.id} value={sk.id} disabled={isSelected}>
+                                                        {sk.name} ({sk.category}) {isSelected ? '— Ya seleccionada' : ''}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    </div>
+                                    <div className="w-24 flex flex-col gap-1">
+                                        <label className="text-[9px] font-bold text-gray-400 uppercase">Nivel (1-4)</label>
+                                        <input 
+                                            type="number" 
+                                            min="1" 
+                                            max="4" 
+                                            className="form-input text-sm text-center" 
+                                            value={s.level} 
+                                            onChange={e => {
+                                                const newSkills = [...form.skills];
+                                                newSkills[idx].level = Number(e.target.value);
+                                                setForm(p => ({ ...p, skills: newSkills }));
+                                            }} 
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1 items-center pb-2">
+                                        <label className="text-[9px] font-bold text-gray-400 uppercase mb-1">Cert.</label>
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 rounded text-indigo-600 border-gray-300"
+                                            checked={s.certified}
+                                            onChange={e => {
+                                                const newSkills = [...form.skills];
+                                                newSkills[idx].certified = e.target.checked;
+                                                setForm(p => ({ ...p, skills: newSkills }));
+                                            }}
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            const newSkills = form.skills.filter((_, i) => i !== idx);
+                                            setForm(p => ({ ...p, skills: newSkills }));
+                                        }}
+                                        className="mb-1.5 p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                            {!form.skills.length && (
+                                <p className="text-center py-4 text-xs text-gray-400 italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                    No hay habilidades asignadas aún.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Manage Areas Modal */}
+            <Modal
+                isOpen={areasModalOpen}
+                onClose={() => setAreasModalOpen(false)}
+                title="Gestionar Áreas (UETs)"
+                actions={<Button variant="primary" onClick={() => setAreasModalOpen(false)}>Cerrar</Button>}
+            >
+                <div style={{ padding: 'var(--space-4)' }} className="flex flex-col gap-4">
+                    <div className="flex gap-2">
+                        <input 
+                            className="form-input flex-1" 
+                            placeholder="Nombre de la nueva área..." 
+                            value={newAreaName} 
+                            onChange={e => setNewAreaName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleAddArea()}
+                        />
+                        <Button variant="primary" onClick={handleAddArea} disabled={addingArea || !newAreaName.trim()}>
+                            {addingArea ? 'Agregando...' : 'Agregar'}
+                        </Button>
+                    </div>
+
+                    <div className="mt-2 border border-gray-100 rounded-lg overflow-hidden max-h-[400px] overflow-y-auto">
+                        <table className="table w-full">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase">Nombre del Área</th>
+                                    <th className="px-4 py-2 text-center text-[11px] font-bold text-gray-500 uppercase w-20">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {areas.map(a => (
+                                    <tr key={a.id} className="hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{a.name}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            <button 
+                                                onClick={() => handleDeleteArea(a.id)}
+                                                className="text-gray-400 hover:text-red-500 transition-colors"
+                                                title="Eliminar"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {!areas.length && (
+                                    <tr>
+                                        <td colSpan="2" className="px-4 py-8 text-center text-gray-400 text-sm">
+                                            No hay áreas registradas.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </Modal>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { StatCard, Card, Badge } from '../../components/ui';
+import { StatCard, Card, Badge, Modal, Button } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { Target, TrendingUp, AlertTriangle, Wrench, Activity, Flame, ShieldAlert } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 
 const ProgressBar = ({ label, percentage, colorClass }) => (
     <div className="mb-4">
@@ -20,6 +21,32 @@ export default function DashboardPage() {
     const { user } = useAuth();
     const [kpis, setKpis] = useState(null);
     const [error, setError] = useState('');
+    const [drilldown, setDrilldown] = useState(null);
+
+    const handleChartClick = (data, type) => {
+        if (!data || !data.activePayload || data.activePayload.length === 0) return;
+        const area = data.activePayload[0].payload.area;
+        const details = generateDrilldownData(area, type);
+        setDrilldown({ area, type, data: details });
+    };
+
+    const generateDrilldownData = (area, type) => {
+        const data = [];
+        const today = new Date();
+        for (let i = 0; i < 7; i++) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - i);
+            const dateStr = date.toLocaleDateString();
+            if (type === 'Mantenimiento') {
+                data.push({ fecha: dateStr, evento: i % 2 === 0 ? 'Paro Menor (Sensor)' : 'Mantenimiento PM', tiempo: `${15 + Math.floor(Math.random() * 45)} min`, responsable: 'Técnico L' + (1 + (i % 3)) });
+            } else if (type === 'Seguridad') {
+                data.push({ fecha: dateStr, evento: i === 2 ? 'Incidente: Corte leve' : 'Auditoría 5S OK', puntaje: i === 2 ? '-' : `${85 + Math.floor(Math.random() * 15)}%`, estado: i === 2 ? 'Investigado' : 'Aprobado' });
+            } else {
+                data.push({ fecha: dateStr, lote: `LOT-${10045 + i}`, ftq: `${80 + Math.floor(Math.random() * 20)}%`, scrap: `${Math.floor(Math.random() * 8)}%` });
+            }
+        }
+        return data;
+    };
 
     useEffect(() => {
         const loadKpis = async () => {
@@ -38,6 +65,27 @@ export default function DashboardPage() {
         { uet: 'UET Soldadura', value: 92 },
         { uet: 'UET Pintura', value: 85 },
         { uet: 'UET Ensamble Final', value: 78 }
+    ];
+
+    const maintenanceData = [
+        { area: 'Extrusión', paros: 12, mttr: 45 },
+        { area: 'Soldadura', paros: 8, mttr: 30 },
+        { area: 'Pintura', paros: 3, mttr: 15 },
+        { area: 'Ensamble', paros: 5, mttr: 20 }
+    ];
+
+    const safetyData = [
+        { area: 'Extrusión', auditoria5S: 82, incidentes: 2 },
+        { area: 'Soldadura', auditoria5S: 75, incidentes: 1 },
+        { area: 'Pintura', auditoria5S: 95, incidentes: 0 },
+        { area: 'Ensamble', auditoria5S: 90, incidentes: 0 }
+    ];
+
+    const qualityData = [
+        { area: 'Extrusión', ftq: 85, scrap: 15 },
+        { area: 'Soldadura', ftq: 92, scrap: 8 },
+        { area: 'Pintura', ftq: 98, scrap: 2 },
+        { area: 'Ensamble', ftq: 95, scrap: 5 }
     ];
 
     return (
@@ -69,6 +117,54 @@ export default function DashboardPage() {
                 <StatCard icon={TrendingUp} label="Cumplimiento Plan" value="94.2%" color="green" />
                 <StatCard icon={ShieldAlert} label="Inspecciones Calidad" value={`${kpis?.inspectionsToday ?? '12'}`} color="yellow" />
                 <StatCard icon={AlertTriangle} label="Paros de Línea" value={`${kpis?.openBreakdowns ?? '1'}`} color="red" />
+            </div>
+
+            {/* Charts Grid: Mantenimiento, Seguridad, Calidad */}
+            <div className="stat-grid" style={{ marginBottom: '40px' }}>
+                {/* Mantenimiento por Área */}
+                <Card title="Mantenimiento por Área">
+                    <div style={{ height: '240px', width: '100%', paddingTop: '16px' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={maintenanceData} margin={{ top: 5, right: 5, bottom: 20, left: -20 }} onClick={(e) => handleChartClick(e, 'Mantenimiento')} style={{ cursor: 'pointer' }}>
+                                <XAxis dataKey="area" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" />
+                                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: '#1e293b', borderRadius: '8px', border: '1px solid #334155', color: '#f8fafc' }} />
+                                <Bar dataKey="paros" name="Cant. Paros" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={20} />
+                                <Bar dataKey="mttr" name="MTTR (min)" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card>
+
+                {/* Seguridad y 5S por Área */}
+                <Card title="Seguridad y 5S por Área">
+                    <div style={{ height: '240px', width: '100%', paddingTop: '16px' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={safetyData} margin={{ top: 5, right: 5, bottom: 20, left: -20 }} onClick={(e) => handleChartClick(e, 'Seguridad')} style={{ cursor: 'pointer' }}>
+                                <XAxis dataKey="area" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" />
+                                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: '#1e293b', borderRadius: '8px', border: '1px solid #334155', color: '#f8fafc' }} />
+                                <Bar dataKey="auditoria5S" name="Nota 5S (%)" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+                                <Bar dataKey="incidentes" name="Incidentes" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={20} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card>
+
+                {/* Calidad por Área */}
+                <Card title="Calidad (FTQ vs Scrap)">
+                    <div style={{ height: '240px', width: '100%', paddingTop: '16px' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={qualityData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 10 }} onClick={(e) => handleChartClick(e, 'Calidad')} style={{ cursor: 'pointer' }}>
+                                <XAxis type="number" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <YAxis dataKey="area" type="category" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: '#1e293b', borderRadius: '8px', border: '1px solid #334155', color: '#f8fafc' }} />
+                                <Bar dataKey="ftq" name="FTQ (%)" fill="#10b981" stackId="a" radius={[0, 0, 0, 0]} barSize={24} />
+                                <Bar dataKey="scrap" name="Scrap (%)" fill="#ef4444" stackId="a" radius={[0, 4, 4, 0]} barSize={24} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card>
             </div>
 
             {/* Layout Principal: 2 Columnas (8+4) - Activado desde MD */}
@@ -190,6 +286,47 @@ export default function DashboardPage() {
                     </Card>
                 </div>
             </div>
+
+            {/* Drilldown Modal */}
+            <Modal 
+                isOpen={!!drilldown} 
+                onClose={() => setDrilldown(null)} 
+                title={`Detalle Histórico: ${drilldown?.type} - ${drilldown?.area}`}
+                maxWidth="800px"
+                actions={<Button onClick={() => setDrilldown(null)}>Cerrar</Button>}
+            >
+                {drilldown && (
+                    <div style={{ padding: 'var(--space-4)' }}>
+                        <p style={{ marginBottom: '16px', color: 'var(--color-text-secondary)', fontSize: '14px' }}>
+                            Mostrando el historial detallado fecha a fecha para el área seleccionada.
+                        </p>
+                        <div style={{ overflowX: 'auto', background: 'var(--color-bg)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead style={{ background: 'var(--color-bg-elevated)', borderBottom: '1px solid var(--color-border)' }}>
+                                    <tr>
+                                        {Object.keys(drilldown.data[0]).map(key => (
+                                            <th key={key} style={{ padding: '12px 16px', fontSize: '12px', fontWeight: 'bold', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                {key}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {drilldown.data.map((row, idx) => (
+                                        <tr key={idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                            {Object.values(row).map((val, colIdx) => (
+                                                <td key={colIdx} style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--color-text)', fontWeight: colIdx === 0 ? 'bold' : 'normal' }}>
+                                                    {val}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 }

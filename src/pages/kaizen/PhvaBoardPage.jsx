@@ -30,19 +30,30 @@ export default function PhvaBoardPage() {
         e.dataTransfer.setData('id', id);
     };
 
-    const handleDrop = async (e, column) => {
-        const id = e.dataTransfer.getData('id');
+    const changePhase = async (id, column) => {
         const originalTasks = [...tasks];
-
-        // Optimistic update
         setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, column } : t)));
-
         try {
             await apiClient.patch(`/phva/tasks/${id}`, { column });
         } catch (err) {
             setTasks(originalTasks);
-            setError('No se pudo mover la tarea. Inténtelo de nuevo.');
+            setError('No se pudo actualizar la fase.');
         }
+    };
+
+    const parseDescription = (desc, title) => {
+        try {
+            if (desc && desc.startsWith('{')) {
+                const parsed = JSON.parse(desc);
+                if (parsed.planear) return parsed;
+            }
+        } catch (e) {}
+        return {
+            planear: `Definir equipo y cronograma para: ${title}. Analizar causa raíz.`,
+            hacer: desc || `Ejecutar piloto de la mejora propuesta.`,
+            verificar: `Medir resultados y comparar con indicadores iniciales.`,
+            actuar: `Estandarizar solución si es exitosa o reiniciar ciclo.`
+        };
     };
 
     const allowDrop = (e) => e.preventDefault();
@@ -81,50 +92,60 @@ export default function PhvaBoardPage() {
 
             {error && <div className="alert alert-danger mb-6 flex items-center gap-3"><AlertCircle size={18} /> {error}</div>}
 
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-6 overflow-x-auto min-h-[600px]">
-                {columns.map((col) => (
-                    <div
-                        key={col}
-                        className="bg-gray-50/80 border border-gray-200 rounded-2xl flex flex-col p-4 shadow-inner"
-                        onDragOver={allowDrop}
-                        onDrop={(e) => handleDrop(e, col)}
-                    >
-                        <div className="flex justify-between items-center mb-5 px-1">
-                            <h3 className="font-black text-gray-700 uppercase tracking-widest text-[10px]">{col}</h3>
-                            <Badge variant="neutral" className="bg-white border border-gray-100">{tasks.filter(t => t.column === col).length}</Badge>
-                        </div>
-
-                        <div className="flex flex-col gap-4 flex-1">
-                            {tasks.filter(t => t.column === col).map((task) => (
-                                <Card
-                                    key={task.id}
-                                    className="p-4 cursor-grab hover:shadow-xl transition-all bg-white rounded-xl border-l-[6px] border-l-blue-500 hover:-translate-y-1 relative group"
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, task.id)}
-                                >
-                                    <div className="flex justify-between items-start mb-3">
-                                        <Badge variant={task.priority === 'Alta' ? 'error' : task.priority === 'Media' ? 'warning' : 'success'} className="text-[9px] px-2">
-                                            {task.priority}
-                                        </Badge>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-                                                <Trash2 size={12} />
-                                            </button>
-                                            <GripVertical size={14} className="text-gray-200" />
-                                        </div>
-                                    </div>
-                                    <h4 className="font-black text-xs text-gray-800 leading-tight mb-2 uppercase tracking-tight">{task.title}</h4>
-                                    <p className="text-[11px] text-gray-400 font-medium leading-normal">{task.description}</p>
-                                </Card>
-                            ))}
-                            {tasks.filter(t => t.column === col).length === 0 && (
-                                <div className="border-2 border-dashed border-gray-200 rounded-2xl flex-1 flex flex-col items-center justify-center opacity-40">
-                                    <span className="text-[9px] text-gray-400 font-black uppercase tracking-[0.2em]">Soltar aquí</span>
+            <div className="flex-1 flex flex-col gap-8 max-w-5xl mx-auto w-full">
+                {tasks.map((task) => {
+                    const aiPlan = parseDescription(task.description, task.title);
+                    return (
+                        <div key={task.id} className="phva-idea-card group">
+                            {/* Header (Idea) */}
+                            <div className="phva-idea-header">
+                                <button onClick={() => deleteTask(task.id)} style={{position: 'absolute', right: 0, top: 0, background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px'}}>
+                                    <Trash2 size={16} />
+                                </button>
+                                <div style={{display: 'inline-flex', marginBottom: '8px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em'}}>
+                                    IDEA KAIZEN
                                 </div>
-                            )}
+                                <h2 className="phva-idea-title">[{task.title}]</h2>
+                                <p style={{fontSize: '12px', color: '#94a3b8', marginTop: '8px', fontStyle: 'italic', fontWeight: '500'}}>Ciclo PHVA generado por Gemba AI</p>
+                            </div>
+
+                            {/* Matrix Graphic */}
+                            <div className="phva-matrix">
+                                {[
+                                    { phase: 'Planear', text: aiPlan.planear },
+                                    { phase: 'Hacer', text: aiPlan.hacer },
+                                    { phase: 'Verificar', text: aiPlan.verificar },
+                                    { phase: 'Actuar', text: aiPlan.actuar },
+                                ].map((quad) => {
+                                    const isActive = task.column === quad.phase;
+                                    return (
+                                        <div 
+                                            key={quad.phase}
+                                            onClick={() => changePhase(task.id, quad.phase)}
+                                            className={`phva-quadrant ${isActive ? `active-${quad.phase}` : ''}`}
+                                        >
+                                            <div className="phva-quadrant-header">
+                                                <h3 className="phva-quadrant-title">
+                                                    {quad.phase}
+                                                </h3>
+                                                {isActive && <span className="phva-pulse" />}
+                                            </div>
+                                            <p className="phva-quadrant-text">{quad.text}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
+                    );
+                })}
+
+                {tasks.length === 0 && (
+                    <div className="flex flex-col items-center justify-center p-20 border-2 border-dashed border-slate-700 rounded-3xl bg-slate-800/20">
+                        <AlertCircle size={48} className="text-slate-600 mb-4" />
+                        <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Sin Proyectos Activos</h3>
+                        <p className="text-slate-500 mt-2 text-center max-w-sm">Aprueba sugerencias desde el buzón Kaizen o crea una nueva idea manualmente para ver el ciclo PHVA impulsado por Gemba AI.</p>
                     </div>
-                ))}
+                )}
             </div>
 
             <Modal
